@@ -109,7 +109,20 @@ Common to inputs: **preselect** by seeding `dataModel` at the bind path; **disab
 | dsh | `@deepseek-ai/dsh` ≥ 0.1.1-rc.1 with an initialized web profile (run `dsh web` once before installing) |
 | Node.js | ≥ 20 (with npm) |
 
-### Option A · From source (recommended for now)
+### Option A · From npm (recommended)
+
+```sh
+dsh plugin --profile web add a2ui-render-in-dsh
+dsh web
+```
+
+Zero runtime dependencies — two commands and you're done. If your npm mirror hasn't synced the latest version yet, point at the official registry explicitly:
+
+```sh
+dsh plugin --profile web add a2ui-render-in-dsh --registry https://registry.npmjs.org
+```
+
+### Option B · From source (for developers / hacking on the plugin)
 
 ```sh
 # 1. Clone and build
@@ -117,24 +130,14 @@ git clone https://github.com/baihui-ai/a2ui-render-in-dsh.git
 cd a2ui-render-in-dsh
 npm install
 npm run build
-#    Build emits two files: lib/index.js (host plugin) + lib/client.js (browser bundle).
+#    Build emits lib/index.js (host plugin) + lib/client.js (browser bundle).
 #    lib/ is not committed — you MUST build after cloning or dsh won't find the entry.
 
-# 2. Install into dsh's web profile (link mode)
+# 2. Install into dsh's web profile in link mode
 dsh plugin --profile web add link:$(pwd)
-#    Equivalent to pnpm add link:<path> inside the profile; it also appends
-#    a2ui-render-in-dsh to the profile's dsh.profile.bundles automatically.
+#    After code changes: just npm run build + restart dsh web, no reinstall.
 
 # 3. Start / restart dsh web
-dsh web
-```
-
-Why link mode: upgrading is just `git pull && npm run build` plus a dsh web restart — no reinstall.
-
-### Option B · From npm (once the package is published)
-
-```sh
-dsh plugin --profile web add a2ui-render-in-dsh
 dsh web
 ```
 
@@ -156,7 +159,10 @@ curl -s http://127.0.0.1:<port>/ | grep -o "a2ui-render-in-dsh/client.js[^\"]*"
 ### Upgrade & uninstall
 
 ```sh
-# upgrade (link install): rebuild after pulling, then restart dsh web
+# upgrade (npm install)
+dsh plugin --profile web update a2ui-render-in-dsh
+
+# upgrade (source link install): rebuild after pulling, then restart dsh web
 git pull && npm run build
 
 # uninstall: removes the dependency and the bundles entry, then restart dsh web

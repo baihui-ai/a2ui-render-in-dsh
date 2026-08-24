@@ -108,7 +108,20 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 | dsh | `@deepseek-ai/dsh` ≥ 0.1.1-rc.1，且 web profile 已初始化（装插件前先运行过一次 `dsh web`） |
 | Node.js | ≥ 20（含 npm） |
 
-### 方式 A · 源码安装（当前推荐）
+### 方式 A · npm 安装（推荐）
+
+```sh
+dsh plugin --profile web add a2ui-render-in-dsh
+dsh web
+```
+
+零运行时依赖，两条命令装完即用。若你的 npm 镜像尚未同步最新版本，显式指定官方源：
+
+```sh
+dsh plugin --profile web add a2ui-render-in-dsh --registry https://registry.npmjs.org
+```
+
+### 方式 B · 源码安装（开发者 / 需要改代码时）
 
 ```sh
 # 1. 克隆并构建
@@ -116,24 +129,14 @@ git clone https://github.com/baihui-ai/a2ui-render-in-dsh.git
 cd a2ui-render-in-dsh
 npm install
 npm run build
-#    构建产出两个文件：lib/index.js（宿主端插件）+ lib/client.js（浏览器 bundle）
+#    构建产出：lib/index.js（宿主端）+ lib/client.js（浏览器 bundle）
 #    lib/ 不在 git 里，克隆后必须先构建，否则 dsh 启动时找不到入口
 
 # 2. 以 link 方式装进 dsh 的 web profile
 dsh plugin --profile web add link:$(pwd)
-#    该命令等价于在 profile 里 pnpm add link:<路径>，并自动把
-#    a2ui-render-in-dsh 追加到 profile 的 dsh.profile.bundles
+#    改码后只需 npm run build + 重启 dsh web，无需重装
 
 # 3. 启动 / 重启 dsh web
-dsh web
-```
-
-link 方式的好处：后续升级只需 `git pull && npm run build` 再重启 dsh web，无需重装。
-
-### 方式 B · npm 安装（包发布到 npm 后）
-
-```sh
-dsh plugin --profile web add a2ui-render-in-dsh
 dsh web
 ```
 
@@ -155,7 +158,10 @@ curl -s http://127.0.0.1:<port>/ | grep -o "a2ui-render-in-dsh/client.js[^\"]*"
 ### 升级与卸载
 
 ```sh
-# 升级（link 安装）：拉新代码重新构建，重启 dsh web 即生效
+# 升级（npm 安装）
+dsh plugin --profile web update a2ui-render-in-dsh
+
+# 升级（源码 link 安装）：拉新代码重新构建，重启 dsh web 即生效
 git pull && npm run build
 
 # 卸载：从 profile 移除（依赖与 bundles 条目会一并清掉），重启 dsh web
