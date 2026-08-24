@@ -25,3 +25,6 @@ Thumbs.db
 npm-debug.log*
 .tmp/
 tmp/
+
+# npm pack 产物
+*.tgz

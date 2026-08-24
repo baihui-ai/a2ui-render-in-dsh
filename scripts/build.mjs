@@ -14,6 +14,10 @@ const watch = process.argv.includes("--watch");
 
 await mkdir(path.join(root, "lib"), { recursive: true });
 
+// dsh-tools is BUNDLED (tree-shaken down to defineTool's pure helpers), not
+// left as a runtime dependency: a registry-installed copy of this package
+// nests its own dsh-tools/cordis instances beside the runtime's, and the two
+// don't share module identity (the npm-install "reading 'prepare'" crash).
 const hostOptions = {
 	entryPoints: [path.join(root, "src/host/index.js")],
 	outfile: path.join(root, "lib/index.js"),
@@ -21,7 +25,6 @@ const hostOptions = {
 	format: "esm",
 	platform: "node",
 	target: "node20",
-	external: ["@deepseek-ai/*"],
 	logLevel: "info"
 };
 
