@@ -1,0 +1,27 @@
+# 依赖与锁文件（本项目不提交锁文件）
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# 构建产物（npm run build 重新生成）
+lib/
+dist/
+*.tsbuildinfo
+
+# IDE / 编辑器
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志与临时文件
+*.log
+npm-debug.log*
+.tmp/
+tmp/

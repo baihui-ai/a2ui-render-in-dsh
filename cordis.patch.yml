@@ -1,0 +1,5 @@
+# a2ui-render-in-dsh: agent-rendered interactive A2UI cards (quiz options, forms, product cards).
+# The host half registers the a2ui_render tool; the client half owns its toolview.
+- insert:
+    - id: a2ui
+      name: a2ui-render-in-dsh
