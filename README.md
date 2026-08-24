@@ -1,14 +1,14 @@
 # a2ui-render-in-dsh
 
-English | [中文](README.zh.md)
+English | [中文](https://github.com/baihui-ai/a2ui-render-in-dsh/blob/main/README.zh.md)
 
 **A2UI interactive cards for the dsh web UI**: the agent adaptively renders **interactive, visual UI cards** right inside the conversation — quizzes, forms, dropdowns, product cards, ECharts charts, math function plots, Mermaid flowcharts/mind maps, KaTeX formulas, and step-by-step algorithm animations. User interactions flow back to the agent as plain-language messages, closing the loop.
 
 The UI protocol is [A2UI v0.9](https://github.com/google/A2UI) (a declarative Agent-to-UI protocol); rendering is powered by Ant Design X's official implementation, [`@ant-design/x-card`](https://www.npmjs.com/package/@ant-design/x-card).
 
-📸 **[Feature showcase with GIFs → DEMO.md](DEMO.md)**
+📸 **[Feature showcase with GIFs → DEMO.md](https://github.com/baihui-ai/a2ui-render-in-dsh/blob/main/DEMO.md)**
 
-![Quiz interaction](docs/demo-quiz.gif)
+![Quiz interaction](https://raw.githubusercontent.com/baihui-ai/a2ui-render-in-dsh/main/docs/demo-quiz.gif)
 
 ---
 
@@ -151,7 +151,7 @@ curl -s http://127.0.0.1:<port>/ | grep -o "a2ui-render-in-dsh/client.js[^\"]*"
 #    expected:  a2ui-render-in-dsh/client.js?rev=<hash>
 ```
 
-3) Open dsh web and say: **"Quiz me with an interactive card"** — a clickable multiple-choice card means it works (the model calls `a2ui_catalog` once before rendering; that's by design). More prompts: [DEMO.md](DEMO.md#one-stop-prompt-list).
+3) Open dsh web and say: **"Quiz me with an interactive card"** — a clickable multiple-choice card means it works (the model calls `a2ui_catalog` once before rendering; that's by design). More prompts: [DEMO.md](https://github.com/baihui-ai/a2ui-render-in-dsh/blob/main/DEMO.md#one-stop-prompt-list).
 
 ### Upgrade & uninstall
 
