@@ -1,6 +1,6 @@
 {
   "name": "a2ui-render-in-dsh",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A2UI interactive cards for the dsh web UI: the agent renders clickable interfaces (quizzes, forms, product cards) via @ant-design/x-card, and user interactions flow back to the agent as answers.",
   "author": "sondge <fengshangjie@lilybearing.com>",
   "license": "MIT",

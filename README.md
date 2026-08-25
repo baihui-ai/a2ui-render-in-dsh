@@ -30,7 +30,7 @@ a2ui-render-in-dsh (one npm package, a dsh bundle)
 
 ### Key design decisions
 
-**1. Adaptive rendering, decided by the model.** Whether to use UI is entirely the model's call: the tool contract says "only when a card clearly beats prose". Verified both ways — "quiz me" triggers a card, "explain X" stays plain text.
+**1. Proactive rendering, decided by the model.** The tool contract tells the model to reach for cards actively: asking the user anything always renders a form card (each question = one field; suggested options come with an "other" text field), math notation always uses the formula component, and comparable data gets a chart proactively; plain text is reserved for pure narrative explanation. Verified across five scenario classes (survey, choice, math, data, plain explanation) — triggering and restraint both behave.
 
 **2. Skill-style context design (catalog on demand).** The full component catalog is NOT inlined in the tool description; it lives in a second tool, `a2ui_catalog`. Always-visible cost drops from ~1,200 to ~211 tokens (−82%). The model calls the catalog once before its first card in a conversation and reuses it for later cards; conversations that never draw a card pay nothing. The host validates component names and errors with a "call a2ui_catalog" hint, so the model can't silently guess wrong.
 
