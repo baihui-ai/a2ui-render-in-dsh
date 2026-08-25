@@ -166,7 +166,7 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 	// Cards with input components are forms (a submission locks them); cards
 	// without inputs are browse-style — their buttons are queries and stay live.
 	const hasInputs = args !== null && args.components.some(
-		(node) => node !== null && typeof node === "object" && (node.component === "MultipleChoice" || node.component === "CheckBox" || node.component === "TextField" || node.component === "Select")
+		(node) => node !== null && typeof node === "object" && (node.component === "MultipleChoice" || node.component === "CheckBox" || node.component === "TextField" || node.component === "Select" || node.component === "Rate" || node.component === "Slider")
 	);
 
 	const mirrorRef = useRef(null);

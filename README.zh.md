@@ -6,7 +6,7 @@
 
 UI 协议基于 [A2UI v0.9](https://github.com/google/A2UI)（Agent-to-UI 声明式界面协议），渲染引擎使用 Ant Design X 官方实现 [`@ant-design/x-card`](https://www.npmjs.com/package/@ant-design/x-card)。
 
-📸 **[功能示例（含动图）→ DEMO.md](https://github.com/baihui-ai/a2ui-render-in-dsh/blob/main/DEMO.zh.md)**
+📸 **[功能示例（含动图）→ DEMO.md](https://github.com/baihui-ai/a2ui-render-in-dsh/blob/main/DEMO.zh.md)** · 🗺️ **[场景 × 组件映射](https://github.com/baihui-ai/a2ui-render-in-dsh/blob/main/docs/SCENARIOS.zh.md)**
 
 ![做题交互](https://raw.githubusercontent.com/baihui-ai/a2ui-render-in-dsh/main/docs/demo-quiz.gif)
 
@@ -95,7 +95,24 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 | `MultipleChoice` | `options, bind, maxAllowedSelections?, disabled?` | 平铺多选/单选（`maxAllowedSelections: 1` 单选），选项级禁用 |
 | `Select` | `options, bind, label?, placeholder?, multiple?, maxAllowedSelections?, disabled?` | **下拉选择**：单选存值、多选存数组，选项描述/禁用 |
 | `CheckBox` | `label, bind, disabled?` | 布尔勾选 |
+| `Slider` | `bind, label?, min?, max?, step?, unit?` | 数值滑杆；配合 Chart `params` 做参数探索联动 |
+| `Rate` | `bind, label?, max?` | 星级评分 |
+| `Calc` | `expr, inputs, out, digits?` | 隐形派生值：表达式实时重算写回数据模型（计算器引擎） |
+| `When` | `value, equals?/includes?/notEmpty?, children` | 条件容器：选中特定项才显示后续字段 |
+| `Tabs` | `tabs, children, bind?` | 页签：数据集切换 / 内容分组 |
+| `Table` | `columns, rows, caption?` | 对比/参数/价格表，支持字典绑定切换数据集 |
+| `Stat` | `label, value, unit?, trend?` | KPI 指标块，Grid 组合成速览行 |
+| `Steps` | `items` | 步骤条（done/current/pending） |
+| `Progress` | `value, max?, label?` | 进度条 |
+| `Timeline` | `items` | 时间轴（历程/事件回顾） |
+| `CodeBlock` | `code, language?, title?` | 代码块：行号 + 轻量高亮 + 复制按钮 |
+| `Icon` | `name, size?, color?` | 内置 32 个常用线条图标 |
+| `Audio` | `url, title?` | 音频播放器 |
+| `Flashcard` | `front, back` | 点击翻面闪卡（背单词/问答记忆） |
+| `Countdown` | `to?/seconds?, label?` | 实时倒计时 |
 | `TextField` | `label?, placeholder?, multiline?, bind, disabled?` | 文本输入 |
+
+**内联公式**：所有文本位置（Text、选项、表格单元格、步骤、闪卡、动画解说）支持 `$...$` 内嵌 KaTeX——数学选择题的选项可以直接是公式。**响应式联动**：输入组件写数据模型，所有 `{"path"}` 绑定即时更新——滑杆→曲线（Chart `params`）、选择→追问（When）、输入→计算结果（Calc→Stat）、切换→换表（Tabs/Table 字典绑定）。
 
 输入组件通用：**预选中**在 `dataModel` 给 bind 路径设初值；**禁用**用组件级 `disabled: true` 或选项级 `disabled`。数据绑定：`bind` 为不带前导斜杠的写入路径；展示属性用 `{"path": "/x"}`（带斜杠）读实时值。
 

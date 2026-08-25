@@ -10,6 +10,8 @@
 // and into the card mirror (so a submit always carries the full snapshot).
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ZoomableFigure } from "./zoomable.jsx";
+import { compileScopedExpression } from "./expr.js";
+import { rich } from "./richtext.jsx";
 
 export const CardMirrorContext = createContext(null);
 
@@ -90,7 +92,7 @@ const TEXT_VARIANTS = new Set(["h1", "h2", "h3", "body", "strong", "caption"]);
 
 export function Text({ text, variant }) {
 	const kind = TEXT_VARIANTS.has(variant) ? variant : "body";
-	const content = text === undefined || text === null ? "" : String(text);
+	const content = rich(text);
 	if (kind === "h1") return <h1 className="dsha2ui-text-h1">{content}</h1>;
 	if (kind === "h2") return <h2 className="dsha2ui-text-h2">{content}</h2>;
 	if (kind === "h3") return <h3 className="dsha2ui-text-h3">{content}</h3>;
@@ -149,7 +151,7 @@ export function CheckBox({ label, bind, disabled, onDataChange }) {
 	return (
 		<label className="dsha2ui-check" data-disabled={off || undefined}>
 			<input type="checkbox" checked={checked} onChange={toggle} disabled={off} />
-			<span>{label === undefined ? "" : String(label)}</span>
+			<span>{label === undefined ? "" : rich(label)}</span>
 		</label>
 	);
 }
@@ -205,8 +207,8 @@ export function MultipleChoice({ options, bind, maxAllowedSelections, disabled, 
 					>
 						<span className="dsha2ui-option-mark">{isSelected ? "✓" : ""}</span>
 						<span>
-							<div className="dsha2ui-option-label">{option.label === undefined ? String(value) : String(option.label)}</div>
-							{typeof option.description === "string" && option.description !== "" ? <div className="dsha2ui-option-desc">{option.description}</div> : null}
+							<div className="dsha2ui-option-label">{option.label === undefined ? String(value) : rich(option.label)}</div>
+							{typeof option.description === "string" && option.description !== "" ? <div className="dsha2ui-option-desc">{rich(option.description)}</div> : null}
 						</span>
 					</div>
 				);
@@ -215,7 +217,7 @@ export function MultipleChoice({ options, bind, maxAllowedSelections, disabled, 
 	);
 }
 
-export function TextField({ label, placeholder, multiline, bind, disabled, onDataChange }) {
+export function TextField({ label, placeholder, multiline, kind, bind, disabled, onDataChange }) {
 	const initial = useInitial(bind);
 	const write = useWriteBack(bind, onDataChange);
 	const off = useDisabled() || disabled === true;
@@ -231,11 +233,137 @@ export function TextField({ label, placeholder, multiline, bind, disabled, onDat
 		onChange: change,
 		disabled: off
 	};
+	const inputType = kind === "number" || kind === "date" || kind === "time" ? kind : "text";
 	return (
 		<label className="dsha2ui-field">
 			{typeof label === "string" && label !== "" ? <span className="dsha2ui-field-label">{label}</span> : null}
-			{multiline === true ? <textarea rows={3} {...shared} /> : <input type="text" {...shared} />}
+			{multiline === true ? <textarea rows={3} {...shared} /> : <input type={inputType} {...shared} />}
 		</label>
+	);
+}
+
+export function Slider({ bind, label, min, max, step, unit, disabled, onDataChange }) {
+	const initial = useInitial(bind);
+	const write = useWriteBack(bind, onDataChange);
+	const off = useDisabled() || disabled === true;
+	const lo = typeof min === "number" ? min : 0;
+	const hi = typeof max === "number" && max > lo ? max : lo + 100;
+	const stepV = typeof step === "number" && step > 0 ? step : (hi - lo) / 100;
+	const [value, setValue] = useState(typeof initial === "number" ? initial : lo);
+	const suffix = typeof unit === "string" ? unit : "";
+	const change = (event) => {
+		const next = Number(event.target.value);
+		setValue(next);
+		write(next, { name: typeof label === "string" && label !== "" ? label : undefined, text: `${next}${suffix}` });
+	};
+	return (
+		<div className="dsha2ui-field">
+			{typeof label === "string" && label !== "" ? <span className="dsha2ui-field-label">{label}</span> : null}
+			<div className="dsha2ui-slider" data-disabled={off || undefined}>
+				<input type="range" min={lo} max={hi} step={stepV} value={value} onChange={change} disabled={off} />
+				<span className="dsha2ui-slider-value">{value}{suffix}</span>
+			</div>
+		</div>
+	);
+}
+
+/**
+ * Conditional container. `value` is an engine-resolved binding ({"path": …});
+ * shows children when the condition holds:
+ *   equals — value === equals;  includes — array/string value contains it;
+ *   notEmpty: true — value is a non-empty string/array/number.
+ * With no condition props, truthiness of `value` decides.
+ */
+export function When({ value, equals, includes, notEmpty, children }) {
+	let show;
+	if (equals !== undefined) show = value === equals;
+	else if (includes !== undefined) show = Array.isArray(value) ? value.includes(includes) : typeof value === "string" && value.includes(includes);
+	else if (notEmpty === true) show = Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== "";
+	else show = Boolean(value);
+	return show ? <div className="dsha2ui-when">{children}</div> : null;
+}
+
+export function Tabs({ tabs, bind, onDataChange, children }) {
+	const write = useWriteBack(bind, onDataChange);
+	const labels = Array.isArray(tabs) ? tabs.map((tab) => String(tab)) : [];
+	const panes = Array.isArray(children) ? children : children !== undefined ? [children] : [];
+	const [active, setActive] = useState(0);
+	if (labels.length === 0) return <div className="dsha2ui-when">{children}</div>;
+	const pick = (index) => {
+		setActive(index);
+		if (typeof bind === "string" && bind !== "") write(labels[index], { text: labels[index] });
+	};
+	return (
+		<div className="dsha2ui-tabs">
+			<div className="dsha2ui-tabs-bar" role="tablist">
+				{labels.map((labelText, index) => (
+					<button key={index} type="button" role="tab" aria-selected={index === active} className="dsha2ui-tab" data-active={index === active || undefined} onClick={() => pick(index)}>{labelText}</button>
+				))}
+			</div>
+			<div className="dsha2ui-tabs-pane">{panes[active] ?? null}</div>
+		</div>
+	);
+}
+
+/**
+ * Derived value: recomputes expr over engine-resolved numeric inputs and
+ * writes the result at `out` (a bind path). Renders nothing by itself.
+ */
+export function Calc({ expr, inputs, out, digits, onDataChange }) {
+	const write = useWriteBack(out, onDataChange);
+	const scope = inputs !== null && typeof inputs === "object" ? inputs : {};
+	const round = typeof digits === "number" && digits >= 0 && digits <= 8 ? digits : 2;
+	const signature = JSON.stringify(scope) + "|" + String(expr);
+	const lastRef = useRef(null);
+	useEffect(() => {
+		if (lastRef.current === signature) return;
+		lastRef.current = signature;
+		try {
+			const fn = compileScopedExpression(String(expr), Object.keys(scope));
+			const numericScope = {};
+			for (const [key, value] of Object.entries(scope)) numericScope[key] = typeof value === "number" ? value : Number(value);
+			const result = fn(numericScope);
+			write(result === null ? null : Number(result.toFixed(round)));
+		} catch {
+			write(null);
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [signature]);
+	return null;
+}
+
+export function Rate({ bind, label, max, disabled, onDataChange }) {
+	const initial = useInitial(bind);
+	const write = useWriteBack(bind, onDataChange);
+	const off = useDisabled() || disabled === true;
+	const total = typeof max === "number" && max >= 2 && max <= 10 ? Math.floor(max) : 5;
+	const [value, setValue] = useState(typeof initial === "number" ? initial : 0);
+	const [hover, setHover] = useState(0);
+	const pick = (n) => {
+		if (off) return;
+		const next = n === value ? 0 : n;
+		setValue(next);
+		write(next, { name: typeof label === "string" && label !== "" ? label : undefined, text: next > 0 ? `${next}/${total}` : "" });
+	};
+	return (
+		<div className="dsha2ui-field">
+			{typeof label === "string" && label !== "" ? <span className="dsha2ui-field-label">{label}</span> : null}
+			<div className="dsha2ui-rate" data-disabled={off || undefined} onMouseLeave={() => setHover(0)}>
+				{Array.from({ length: total }, (_, index) => (
+					<button
+						key={index}
+						type="button"
+						className="dsha2ui-rate-star"
+						data-on={(hover > 0 ? hover : value) > index || undefined}
+						disabled={off}
+						aria-label={`${index + 1}/${total}`}
+						onClick={() => pick(index + 1)}
+						onMouseEnter={() => { if (!off) setHover(index + 1); }}
+					>★</button>
+				))}
+				<span className="dsha2ui-rate-num">{value > 0 ? `${value}/${total}` : ""}</span>
+			</div>
+		</div>
 	);
 }
 
@@ -303,7 +431,7 @@ export function Select({ options, bind, placeholder, multiple, maxAllowedSelecti
 			<div className="dsha2ui-select" data-open={open || undefined} data-disabled={off || undefined}>
 				<button type="button" className="dsha2ui-select-trigger" disabled={off} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((prev) => !prev)}>
 					<span className={display !== "" ? "dsha2ui-select-value" : "dsha2ui-select-placeholder"}>
-						{display !== "" ? display : typeof placeholder === "string" && placeholder !== "" ? placeholder : "请选择"}
+						{display !== "" ? rich(display) : typeof placeholder === "string" && placeholder !== "" ? placeholder : "请选择"}
 					</span>
 					<span className="dsha2ui-select-arrow" aria-hidden>▾</span>
 				</button>
@@ -326,8 +454,8 @@ export function Select({ options, bind, placeholder, multiple, maxAllowedSelecti
 								>
 									<span className="dsha2ui-select-mark">{isSelected ? "✓" : ""}</span>
 									<span className="dsha2ui-select-texts">
-										<span className="dsha2ui-option-label">{option.label !== undefined ? String(option.label) : String(value)}</span>
-										{typeof option.description === "string" && option.description !== "" ? <span className="dsha2ui-option-desc">{option.description}</span> : null}
+										<span className="dsha2ui-option-label">{option.label !== undefined ? rich(option.label) : String(value)}</span>
+										{typeof option.description === "string" && option.description !== "" ? <span className="dsha2ui-option-desc">{rich(option.description)}</span> : null}
 									</span>
 								</div>
 							);
@@ -352,6 +480,11 @@ export const CATALOG = {
 	Button,
 	CheckBox,
 	MultipleChoice,
+	Rate,
 	Select,
+	Slider,
+	When,
+	Tabs,
+	Calc,
 	TextField
 };

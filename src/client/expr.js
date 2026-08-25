@@ -74,8 +74,8 @@ function tokenize(source) {
 	return tokens;
 }
 
-/** Shunting-yard to RPN; validates every name against the whitelist. */
-function toRpn(tokens) {
+/** Shunting-yard to RPN; validates every name against the whitelist + allowed variables. */
+function toRpn(tokens, allowedVars) {
 	const output = [];
 	const stack = [];
 	let prev = null;
@@ -84,7 +84,7 @@ function toRpn(tokens) {
 			output.push(token);
 		} else if (token.kind === "name") {
 			const name = token.value;
-			if (name === "x") output.push({ kind: "var" });
+			if (allowedVars.has(name)) output.push({ kind: "var", value: name });
 			else if (name in CONSTANTS) output.push({ kind: "num", value: CONSTANTS[name] });
 			else if (name in FUNCTIONS) stack.push({ kind: "fn", value: name, argc: 1 });
 			else throw new Error(`unknown identifier "${name}"`);
@@ -126,19 +126,24 @@ function toRpn(tokens) {
 }
 
 /**
- * Compile an expression in x to a sampler. Returns a function of x that
- * yields a finite number or null (domain error / non-finite).
+ * Compile an expression over the given variable names to an evaluator over a
+ * scope object; yields a finite number or null (domain error / non-finite).
  * @throws {Error} on a syntax error or non-whitelisted identifier.
  */
-export function compileExpression(source) {
+export function compileScopedExpression(source, allowedVars) {
 	if (typeof source !== "string" || source.trim() === "") throw new Error("empty expression");
-	const rpn = toRpn(tokenize(source));
+	const allowed = new Set(allowedVars);
+	const rpn = toRpn(tokenize(source), allowed);
 	if (rpn.length === 0) throw new Error("empty expression");
-	return (x) => {
+	return (scope) => {
 		const stack = [];
 		for (const token of rpn) {
 			if (token.kind === "num") stack.push(token.value);
-			else if (token.kind === "var") stack.push(x);
+			else if (token.kind === "var") {
+				const value = scope[token.value];
+				if (typeof value !== "number" || !Number.isFinite(value)) return null;
+				stack.push(value);
+			}
 			else if (token.kind === "neg") stack.push(-stack.pop());
 			else if (token.kind === "op") {
 				const b = stack.pop();
@@ -155,4 +160,10 @@ export function compileExpression(source) {
 		const result = stack[0];
 		return typeof result === "number" && Number.isFinite(result) ? result : null;
 	};
+}
+
+/** Back-compat single-variable form: a function of x. */
+export function compileExpression(source, extraVars = []) {
+	const fn = compileScopedExpression(source, ["x", ...extraVars]);
+	return (x, extra) => fn({ x, ...extra });
 }

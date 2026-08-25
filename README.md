@@ -6,7 +6,7 @@ English | [中文](https://github.com/baihui-ai/a2ui-render-in-dsh/blob/main/REA
 
 The UI protocol is [A2UI v0.9](https://github.com/google/A2UI) (a declarative Agent-to-UI protocol); rendering is powered by Ant Design X's official implementation, [`@ant-design/x-card`](https://www.npmjs.com/package/@ant-design/x-card).
 
-📸 **[Feature showcase with GIFs → DEMO.md](https://github.com/baihui-ai/a2ui-render-in-dsh/blob/main/DEMO.md)**
+📸 **[Feature showcase with GIFs → DEMO.md](https://github.com/baihui-ai/a2ui-render-in-dsh/blob/main/DEMO.md)** · 🗺️ **[Scenario × component map](https://github.com/baihui-ai/a2ui-render-in-dsh/blob/main/docs/SCENARIOS.md)**
 
 ![Quiz interaction](https://raw.githubusercontent.com/baihui-ai/a2ui-render-in-dsh/main/docs/demo-quiz.gif)
 
@@ -91,12 +91,29 @@ Tracks: Backend, Data Analysis
 | `Mermaid` | `code, caption?` | **Mermaid 11**: flowchart/mindmap/sequence/gantt etc., built-in fullscreen zoom |
 | `Chart` | `option, height?, functions?, xMin?, xMax?, samples?, yClip?` | **ECharts 6**: data mode (option verbatim) + function-plot mode (expressions sampled automatically, asymptote breaks), built-in fullscreen |
 | `Video` | `url, poster?, loop?, muted?, autoplay?` | HTML5 video (mp4/webm) |
-| `Anim` | `frames, interval?, height?, autoplay?, labels?` | **Algorithm animation**: bars and grid/matrix forms auto-detected; auto-plays once per card per tab, ↻ replay / pause / step / reset / progress / legend |
+| `Anim` | `frames, interval?, height?, autoplay?, labels?` | **Algorithm animation**: bars, grid/matrix, and graph/tree (BFS/DFS, auto circle layout) forms auto-detected; auto-plays once per card per tab, ↻ replay / pause / step / reset / progress / legend |
 | `Button` | `label, variant?, submit?, action: {event: {name, context?}}` | Sends the submission; `submit` explicitly controls card locking |
 | `MultipleChoice` | `options, bind, maxAllowedSelections?, disabled?` | Flat multi/single select (`maxAllowedSelections: 1` = single), per-option disable |
 | `Select` | `options, bind, label?, placeholder?, multiple?, maxAllowedSelections?, disabled?` | **Dropdown**: single stores a value, multi stores an array; option descriptions/disabling |
 | `CheckBox` | `label, bind, disabled?` | Boolean toggle |
+| `Slider` | `bind, label?, min?, max?, step?, unit?` | Numeric slider; pairs with Chart `params` for live parameter exploration |
+| `Rate` | `bind, label?, max?` | Star rating |
+| `Calc` | `expr, inputs, out, digits?` | Invisible derived value: live-recomputed expression written back to the data model (calculator engine) |
+| `When` | `value, equals?/includes?/notEmpty?, children` | Conditional container: reveal follow-up fields on selection |
+| `Tabs` | `tabs, children, bind?` | Tab switcher: dataset switching / content grouping |
+| `Table` | `columns, rows, caption?` | Comparison/spec/price tables; dictionary binding switches datasets |
+| `Stat` | `label, value, unit?, trend?` | KPI tile; combine in a Grid for metric overviews |
+| `Steps` | `items` | Step list (done/current/pending) |
+| `Progress` | `value, max?, label?` | Progress bar |
+| `Timeline` | `items` | Timeline (history / event review) |
+| `CodeBlock` | `code, language?, title?` | Code with line numbers, light highlighting, copy button |
+| `Icon` | `name, size?, color?` | 32 built-in stroke icons |
+| `Audio` | `url, title?` | Audio player |
+| `Flashcard` | `front, back` | Tap-to-flip card (vocabulary / recall) |
+| `Countdown` | `to?/seconds?, label?` | Live countdown |
 | `TextField` | `label?, placeholder?, multiline?, bind, disabled?` | Text input |
+
+**Inline math**: every text position (Text, option labels, table cells, steps, flashcards, animation captions) may embed KaTeX with `$...$` — math-quiz OPTIONS can be formulas. **Reactive bindings**: inputs write the data model and every `{"path"}` binding updates live — slider→curve (Chart `params`), choice→follow-up (When), input→computed result (Calc→Stat), switcher→dataset (Tabs / Table dictionary binding).
 
 Common to inputs: **preselect** by seeding `dataModel` at the bind path; **disable** via component-level `disabled: true` or per-option `disabled`. Data binding: `bind` is a write path WITHOUT a leading slash; display props read live values with `{"path": "/x"}` (WITH a slash).
 
