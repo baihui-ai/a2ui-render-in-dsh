@@ -65,6 +65,35 @@ function buildFunctionOption(functions, option, options) {
 	};
 }
 
+/**
+ * ECharts legend/grid don't avoid each other; models rarely reserve space.
+ * Inject safe paddings: legend defaults to top, grid gains containLabel and
+ * enough top/bottom for whatever occupies those edges. Explicit settings are
+ * respected — values are only raised when they would collide.
+ */
+function withSafeLayout(option) {
+	const merged = { backgroundColor: "transparent", ...option };
+	const legend = merged.legend;
+	const hasLegend = legend !== undefined && legend !== null && legend !== false;
+	let legendAtBottom = false;
+	if (hasLegend && typeof legend === "object" && !Array.isArray(legend)) {
+		legendAtBottom = legend.bottom !== undefined && legend.top === undefined;
+		if (legend.top === undefined && legend.bottom === undefined) merged.legend = { ...legend, top: 0 };
+	}
+	const hasTitle = merged.title !== undefined && merged.title !== null;
+	const needTop = 26 + (hasTitle ? 28 : 0) + (hasLegend && !legendAtBottom ? 30 : 0);
+	const needBottom = legendAtBottom ? 46 : 8;
+	const grid = merged.grid !== null && typeof merged.grid === "object" && !Array.isArray(merged.grid) ? { ...merged.grid } : {};
+	if (grid.containLabel === undefined) grid.containLabel = true;
+	const num = (value) => (typeof value === "number" ? value : undefined);
+	if (grid.top === undefined || (num(grid.top) !== undefined && num(grid.top) < needTop)) grid.top = needTop;
+	if (grid.bottom === undefined || (num(grid.bottom) !== undefined && num(grid.bottom) < needBottom)) grid.bottom = needBottom;
+	if (grid.left === undefined) grid.left = 12;
+	if (grid.right === undefined) grid.right = 12;
+	merged.grid = grid;
+	return merged;
+}
+
 export function Chart({ option, height, width, functions, params, xMin, xMax, samples, yClip }) {
 	const holder = useRef(null);
 	const [error, setError] = useState(null);
@@ -76,9 +105,9 @@ export function Chart({ option, height, width, functions, params, xMin, xMax, sa
 		if (!functionMode && (option === null || typeof option !== "object")) return undefined;
 		let chart;
 		try {
-			const resolved = functionMode
+			const resolved = withSafeLayout(functionMode
 				? buildFunctionOption(functions, option, { xMin, xMax, samples, yClip, params })
-				: { backgroundColor: "transparent", ...option };
+				: option ?? {});
 			chart = echarts.init(node, isDarkTheme() ? "dark" : undefined);
 			chart.setOption(resolved, true);
 		} catch (err) {
