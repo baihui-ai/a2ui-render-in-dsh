@@ -8,7 +8,7 @@ The UI protocol is [A2UI v0.9](https://github.com/google/A2UI) (a declarative Ag
 
 📸 **[Feature showcase with GIFs → DEMO.md](https://github.com/baihui-ai/a2ui-render-in-dsh/blob/main/DEMO.md)** · 🗺️ **[Scenario × component map](https://github.com/baihui-ai/a2ui-render-in-dsh/blob/main/docs/SCENARIOS.md)**
 
-![Quiz interaction](https://raw.githubusercontent.com/baihui-ai/a2ui-render-in-dsh/main/docs/demo-quiz.gif)
+![Quiz interaction](https://raw.githubusercontent.com/baihui-ai/a2ui-render-in-dsh/main/docs/demo-study.gif)
 
 ---
 

@@ -8,7 +8,7 @@ UI 协议基于 [A2UI v0.9](https://github.com/google/A2UI)（Agent-to-UI 声明
 
 📸 **[功能示例（含动图）→ DEMO.md](https://github.com/baihui-ai/a2ui-render-in-dsh/blob/main/DEMO.zh.md)** · 🗺️ **[场景 × 组件映射](https://github.com/baihui-ai/a2ui-render-in-dsh/blob/main/docs/SCENARIOS.zh.md)**
 
-![做题交互](https://raw.githubusercontent.com/baihui-ai/a2ui-render-in-dsh/main/docs/demo-quiz.gif)
+![做题交互](https://raw.githubusercontent.com/baihui-ai/a2ui-render-in-dsh/main/docs/demo-study.gif)
 
 ---
 

@@ -32,7 +32,7 @@ export const name = "a2ui-client";
 export const inject = ["slots", "locale", "connection"];
 
 // Exposed for harness/tests; dsh itself only consumes apply/inject.
-export { A2uiToolView };
+export { A2uiToolView, A2uiUpdateView };
 
 export function apply(ctx) {
 	ctx.effect(() => ctx.locale.register(NS, { zh, en }), "a2ui: dictionaries");

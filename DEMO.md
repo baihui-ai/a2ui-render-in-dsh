@@ -4,23 +4,61 @@ English | [中文](DEMO.zh.md)
 
 Each demo shows: **what you say to dsh → the card the model renders → what you do on the card → what comes back to the conversation**. All GIFs/screenshots are recorded from real chromium rendering.
 
-To reproduce locally: install the plugin ([README → Installation](README.md#installation)), then send each section's prompt to dsh — whether to render a card is the model's adaptive call, and these prompts trigger it reliably.
+To reproduce locally: install the plugin ([README → Installation](README.md#installation)), then send each section's prompt to dsh. Whether to render a card is the model's adaptive call, anchored on UI's four purposes — **act** (fill/choose), **browse** (see/scan data), **understand** (structure/notation/motion), **feedback** (long-task status) — and none of the prompts below mention "card", "chart" or any UI word.
 
 ---
 
-## 1. Interactive quizzes (learning / testing)
+## Part 1 · One scenario from every corner of life
 
-> 💬 "Quiz me with an interactive card: what's the difference between HTTP 301 and 302?"
+### 📚 Learning — a quiz where the options ARE formulas
 
-The model renders a multiple-choice card → pick an option → click Submit → the answer returns as a plain-language message (`Submit answer: 301 is permanent, 302 is temporary`) → the model grades and explains. **The card locks after submission**: options stay highlighted but frozen, and the footer records what was submitted and when. Reloading the page restores the locked state and selections.
+> 💬 "Give me one calculus question to practice on"
 
-![Quiz](docs/demo-quiz.gif)
+**Purposes: act + understand.** The model renders a choice card whose options are real KaTeX formulas ($\frac{x^2}{2}+C$ …), with a formula hint under the question. Pick → submit → the card locks, and the footer records the submitted answer *rendered as a formula* with a timestamp; a "refill" button reopens it. The answer returns as plain language for the model to grade.
 
-## 2. Forms (dropdown single/multi select, input, checkbox)
+![Learning quiz](docs/demo-study.gif)
+
+### 🏡 Life — booking a weekend stay
+
+> 💬 "I want a hot-spring weekend near Moganshan — help me book a B&B"
+
+**Purpose: act.** A booking form with a month-view `Calendar` (dates before today disabled), single-choice room types with prices, and a pickup checkbox. Submit once → the whole card locks with a record; query-free forms can be reopened with the refill button. The submission arrives as a readable multi-line message, not JSON.
+
+![Life booking](docs/demo-life.gif)
+
+### 💼 Work — a long task that shows its progress
+
+> 💬 "Track our three competitors' price changes this week and summarize"
+
+**Purpose: feedback.** Before starting, the model renders a `Progress` + `Steps` card, then advances it **in place** with `a2ui_update` as each step completes — the progress bar actually moves (10% → 45% → 80% → 100%), steps tick green one by one, and the final summary table lands *inside the same card* (sortable, copy/CSV built in). Updates persist and replay after a page reload.
+
+![Work progress](docs/demo-work.gif)
+
+### 📊 Data — "I just want to SEE it"
+
+> 💬 "我想看一些2026年上半年各省GDP" (show me provincial GDP for H1 2026)
+
+**Purpose: browse.** A data-reading ask IS a chart ask — no "chart" keyword needed. The model composes KPI `Stat` tiles + a China `Map` choropleth + an interactive `Table` in one card: click a header to sort (numeric-aware), type in the filter box to narrow, copy as TSV or export CSV. Approximate or dated data doesn't cancel the card — the model labels the period and adds caveats in prose.
+
+![Data GDP](docs/demo-data.gif)
+
+### 🍿 Entertainment — pick me a movie
+
+> 💬 "Help me pick a thriller for the weekend"
+
+**Purpose: browse.** Recommendations render as one `Card` per movie in a `Grid` with rating `Tag`s. The "View details" buttons are **query buttons** — cards without inputs never lock, so you can click them again and again. Below, `Suggestions` chips offer natural follow-ups; tapping one sends it as your next message instantly.
+
+![Entertainment movies](docs/demo-fun.gif)
+
+---
+
+## Part 2 · Capability close-ups
+
+### Forms: dropdowns, multi-select, preselection, disabling
 
 > 💬 "Build a course signup form: name input, city dropdown (single, default Beijing), track dropdown (multi, max 2), and an agreement checkbox"
 
-`Select` supports single select (stores the value) and multi select (stores an array, cap via `maxAllowedSelections`), option descriptions, per-option disabling (e.g. "Guangzhou (not yet open)"), and preselection via `dataModel`. The submission is a multi-line plain-language summary:
+`Select` supports single select (stores the value) and multi select (stores an array, cap via `maxAllowedSelections`), option descriptions, per-option disabling, and preselection via `dataModel`. The submission is a multi-line plain-language summary:
 
 ```
 Submit signup
@@ -31,67 +69,53 @@ Agree to terms: yes
 
 ![Form](docs/demo-form.gif)
 
-## 3. Product cards (multi-column + query buttons)
-
-> 💬 "Recommend three mechanical keyboards as three side-by-side product cards, each with a View Details button"
-
-One call + `Grid` lays out equal-width columns. **Buttons on cards without input components are auto-detected as query buttons** — they stay clickable forever (each click sends `View details: SKU-00x`), unlike form submissions which lock.
-
-![Product cards](docs/demo-product.gif)
-
-## 4. Charts & dashboards
+### Charts & dashboards
 
 > 💬 "Draw a 2×2 ops dashboard: visits line chart, orders bar chart, channel share donut, conversion area chart"
 
-`Chart` passes a standard ECharts option through verbatim; `Grid columns: 2` makes it a dashboard.
+`Chart` passes a standard ECharts option through verbatim; `Grid columns: 2` makes it a dashboard. Every chart has a PNG-download button.
 
 ![Dashboard](docs/demo-dashboard.png)
 
-## 5. Math function plots
+### Math function plots
 
 > 💬 "Plot y=tan(x), cot(x), sec(x), csc(x)"
 
-The model only writes expressions (`functions: [{"expr": "tan(x)"}]`); a built-in **safe expression evaluator** (whitelisted math functions, no eval) samples ~400 points and breaks lines at asymptotes — the model never hand-enumerates data points (which would inevitably fail).
+The model only writes expressions (`functions: [{"expr": "tan(x)"}]`); a built-in **safe expression evaluator** (whitelisted math functions, no eval) samples ~400 points and breaks lines at asymptotes — the model never hand-enumerates data points. Bind `params` to a `Slider` and the curve re-renders live as you drag.
 
 ![Function plots](docs/demo-function-plot.png)
 
-## 6. Flowcharts / mind maps / sequence diagrams (Mermaid)
+### Diagrams (Mermaid) & formulas (KaTeX)
 
-> 💬 "Draw a user-registration flowchart and a frontend-skills mind map"
+> 💬 "Draw a user-registration flowchart and a frontend-skills mind map" / "Show the normal distribution density function"
 
-The `Mermaid` component covers every Mermaid diagram type — flowchart, mindmap, sequenceDiagram, gantt, pie, stateDiagram — with automatic light/dark theming.
+`Mermaid` covers flowchart, mindmap, sequenceDiagram, gantt, pie, stateDiagram with automatic theming. `Math` renders LaTeX with fonts inlined (zero external requests); matrices are forced into formula rendering — never raw arrays in text. Every text position (options, table cells, captions) accepts inline `$...$` math.
 
-## 7. Math formulas (KaTeX)
-
-> 💬 "Show the normal distribution density function" / "Animate matrix multiplication (state the equation first)"
-
-The `Math` component renders LaTeX (fonts inlined into the plugin, zero external requests). Matrices are forced into formula rendering — the catalog forbids raw nested arrays like `[[2,1],[0,3]]` in text.
-
-Combined rendering in light and dark themes (formula + chart + flowchart + mind map + quiz on one card):
+Combined rendering in light and dark themes:
 
 | Light | Dark |
 |---|---|
 | ![Light theme](docs/demo-viz-light.png) | ![Dark theme](docs/demo-viz-dark.png) |
 
-## 8. Algorithm animation · array/bars form
+### Algorithm animation · bars form
 
 > 💬 "Animate quicksort on [7,2,9,4,1,8,3]"
 
-The model simulates the algorithm into per-step frames; the plugin plays them as smoothly-morphing gradient bars: orange = being compared/swapped, green = finalized, with per-frame captions, a progress bar, and a legend. **Each card auto-plays exactly once per tab** (component remounts never replay); after finishing, the button becomes ↻ — one click, one replay. Pause, stepping, and reset included.
+The model simulates the algorithm into per-step frames; the plugin plays them as smoothly-morphing bars: orange = comparing/swapping, green = finalized, with captions, a progress bar, and a legend. **Each card auto-plays exactly once per tab** (remounts never replay); ↻ replays on demand, with pause/step/reset.
 
 ![Sorting animation](docs/demo-sort.gif)
 
-## 9. Algorithm animation · grid/matrix form
+### Algorithm animation · grid/matrix form
 
 > 💬 "Animate matrix multiplication [[2,1],[0,3]] × [[1,4],[5,2]]"
 
-Multiple matrices side by side, computed cell by cell: orange = row/column being read, green = the cell being written, with per-frame equations (`C[0][1] = 1×7 + 2×8 = 23`). Also suits DP-table filling and other 2D processes.
+Multiple matrices side by side, computed cell by cell: orange = cells being read, green = the cell being written, per-frame equations included. A graph/tree form (BFS/DFS, auto circle layout) is also auto-detected.
 
 ![Matrix animation](docs/demo-matrix.gif)
 
-## 10. Fullscreen zoom (mind maps / flowcharts / charts / images)
+### Fullscreen zoom
 
-Hover reveals ⛶ → fullscreen with automatic fit-to-viewport scaling → wheel zoom (0.2×–10×) + drag panning → exit via Esc/✕. Charts re-render at fullscreen size (vector-crisp).
+Hover reveals ⛶ → fullscreen with fit-to-viewport scaling → wheel zoom (0.2×–10×) + drag panning → exit via Esc/✕. Charts re-render at fullscreen size (vector-crisp).
 
 ![Fullscreen zoom](docs/demo-fullscreen.gif)
 
@@ -99,13 +123,12 @@ Hover reveals ⛶ → fullscreen with automatic fit-to-viewport scaling → whee
 
 ## One-stop prompt list
 
-Send these to dsh in order to reproduce everything above:
+Send these to dsh in order to reproduce Part 1 — none of them names a UI:
 
-1. Quiz me with an interactive card: the difference between HTTP 301 and 302
-2. Build a course signup form: name input, city dropdown (default Beijing), track dropdown (multi, max 2), agreement checkbox
-3. Recommend three mechanical keyboards as three side-by-side product cards with View Details buttons
-4. Draw a 2×2 ops dashboard: visits line, orders bar, channel donut, conversion area chart
-5. Plot y=sin(x) vs y=cos(x) on one chart, and show Euler's identity
-6. Draw a user-registration flowchart and a frontend-skills mind map
-7. Animate bubble sort on [5,2,8,1,9]
-8. Animate matrix multiplication [[1,2],[3,4]] × [[5,6],[7,8]], stating the full equation first
+1. Give me one calculus question to practice on
+2. I want a hot-spring weekend near Moganshan — help me book a B&B
+3. Track our three competitors' price changes this week and summarize
+4. 我想看一些2026年上半年各省GDP
+5. Help me pick a thriller for the weekend
+
+And for Part 2: a signup form / a 2×2 ops dashboard / plot tan·cot·sec·csc / a registration flowchart + skills mind map / animate quicksort / animate a matrix multiplication.

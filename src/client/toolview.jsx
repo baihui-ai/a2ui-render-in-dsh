@@ -6,6 +6,7 @@ import { Box as XCardBox, Card as XCardSurface } from "@ant-design/x-card";
 import { CATALOG, CardMirrorContext } from "./components.jsx";
 import { VIZ_CATALOG } from "./components-viz.jsx";
 import { Markdown } from "./markdown.jsx";
+import { rich } from "./richtext.jsx";
 
 const FULL_CATALOG = { ...CATALOG, ...VIZ_CATALOG, Markdown };
 
@@ -378,7 +379,7 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 			) : sendState.kind !== "idle" ? (
 				<div className="dsha2ui-foot" data-kind={sendState.kind}>
 					{sendState.kind === "sending" ? <span className="dsha2ui-pulse">{t("card.sending")}</span> : null}
-					{sendState.kind === "sent" ? <span>✓ {sendState.name}{typeof sendState.at === "number" ? ` · ${formatTime(sendState.at)}` : ""}</span> : null}
+					{sendState.kind === "sent" ? <span>✓ {rich(sendState.name)}{typeof sendState.at === "number" ? ` · ${formatTime(sendState.at)}` : ""}</span> : null}
 					{sendState.kind === "sent" && hasInputs ? (
 						<button type="button" className="dsha2ui-refill" onClick={() => {
 							mirrorRef.current.unlock();
