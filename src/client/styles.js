@@ -16,6 +16,8 @@ export const CSS = `
 .dsha2ui-row{display:flex;flex-direction:row;align-items:center;flex-wrap:wrap;min-width:0}
 .dsha2ui-grid{display:grid;min-width:0}
 .dsha2ui-grid>.dsha2ui-card{height:100%;box-sizing:border-box}
+.dsha2ui-card>.dsha2ui-btn:last-child{margin-top:auto}
+.dsha2ui-card>.dsha2ui-row:last-child:has(>.dsha2ui-btn){margin-top:auto}
 .dsha2ui-card{border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.2));border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0}
 .dsha2ui-card-title{font-size:14px;font-weight:600;color:var(--dsw-alias-label-primary,inherit)}
 .dsha2ui-divider{border:none;border-top:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.2));margin:8px 0;width:100%}

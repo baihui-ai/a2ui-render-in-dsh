@@ -312,8 +312,10 @@ export function Tabs({ tabs, bind, onDataChange, children }) {
 export function Calc({ expr, inputs, out, digits, onDataChange }) {
 	const write = useWriteBack(out, onDataChange);
 	const scope = inputs !== null && typeof inputs === "object" ? inputs : {};
-	const round = typeof digits === "number" && digits >= 0 && digits <= 8 ? digits : 2;
-	const signature = JSON.stringify(scope) + "|" + String(expr);
+	// Rounding is DISPLAY-ONLY: with digits unset the full-precision value is
+	// written, so chained Calcs (rate/1200 -> monthly -> interest) keep precision.
+	const round = typeof digits === "number" && digits >= 0 && digits <= 8 ? Math.floor(digits) : null;
+	const signature = Object.keys(scope).sort().map((key) => `${key}=${String(scope[key])}`).join(",") + "|" + String(expr);
 	const lastRef = useRef(null);
 	useEffect(() => {
 		if (lastRef.current === signature) return;
@@ -323,7 +325,7 @@ export function Calc({ expr, inputs, out, digits, onDataChange }) {
 			const numericScope = {};
 			for (const [key, value] of Object.entries(scope)) numericScope[key] = typeof value === "number" ? value : Number(value);
 			const result = fn(numericScope);
-			write(result === null ? null : Number(result.toFixed(round)));
+			write(result === null ? null : round === null ? result : Number(result.toFixed(round)));
 		} catch {
 			write(null);
 		}

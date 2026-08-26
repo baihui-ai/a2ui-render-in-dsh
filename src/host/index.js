@@ -48,7 +48,7 @@ Interaction:
 - Select {options, bind, label?, placeholder?, multiple?, maxAllowedSelections?, disabled?} — dropdown; single stores value, multiple stores array
 - Rate {bind, label?, max?, disabled?} — stars 1..max (5)
 - Slider {bind, label?, min?, max?, step?, unit?, disabled?} — numbers in a range; parameter exploration with Chart params
-- Calc {expr, inputs: {name: {"path": "/x"}…}, out, digits?} — invisible derived number written at out (loan/BMI/conversion engines)
+- Calc {expr, inputs: {name: {"path": "/x"}…}, out, digits?} — invisible derived number written at out; chainable (one Calc's out feeds another's inputs). digits rounds DISPLAY values only — omit on intermediate results (rates, ratios) to keep full precision
 - CheckBox {label, bind, disabled?} · TextField {label?, placeholder?, multiline?, kind?: "text"|"number"|"date"|"time", bind, disabled?}
 Preselect by seeding dataModel at bind paths; disable via disabled on a control or an option.
 
@@ -129,6 +129,20 @@ export function apply(ctx) {
 			const components = Array.isArray(args.components) ? args.components : [];
 			if (!components.some((node) => node !== null && typeof node === "object" && node.id === "root")) {
 				throw new Error("a2ui_render: components must include a node with id \"root\". Call a2ui_catalog for the authoring guide.");
+			}
+			const byId = new Map(components.filter((n) => n !== null && typeof n === "object" && n.id !== undefined).map((n) => [n.id, n]));
+			const reachable = new Set();
+			const queue = ["root"];
+			while (queue.length > 0) {
+				const id = queue.pop();
+				if (reachable.has(id)) continue;
+				reachable.add(id);
+				const node = byId.get(id);
+				for (const child of Array.isArray(node?.children) ? node.children : []) queue.push(child);
+			}
+			const orphans = [...byId.keys()].filter((id) => !reachable.has(id));
+			if (orphans.length > 0) {
+				throw new Error(`a2ui_render: component(s) ${orphans.map((id) => `"${id}"`).join(", ")} are defined but not reachable from "root" — add them to a parent's children or remove them.`);
 			}
 			const unknown = [...new Set(components
 				.map((node) => node?.component)
