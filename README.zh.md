@@ -2,7 +2,7 @@
 
 [English](https://github.com/baihui-ai/a2ui-render-in-dsh/blob/main/README.md) | 中文
 
-**dsh web 的 A2UI 交互卡片插件**：让 Agent 在对话流里自适应地渲染**可交互、可视化的 UI 卡片**——选择题、表单、下拉、商品卡、ECharts 图表、数学函数绘图、Mermaid 流程图/思维导图、KaTeX 公式、算法过程动画——用户的点击/勾选/输入以自然语言消息回传给 Agent，形成完整的交互闭环。
+**dsh web 的 A2UI 交互卡片插件**：让 Agent 在对话流里自适应地渲染**可交互、可视化的 UI 卡片**——选择题、表单、分步向导、下拉、日历选日期、商品卡、可排序/筛选的表格、ECharts 图表、中国地图分布、数学函数绘图、Mermaid 流程图/思维导图、KaTeX 公式、Markdown 长文、图片上传、手写签名、算法过程动画——用户的点击/勾选/输入以自然语言消息回传给 Agent（图片也能回传），卡片**边生成边渲染**、还能**原地更新**，所见内容一键复制。
 
 UI 协议基于 [A2UI v0.9](https://github.com/google/A2UI)（Agent-to-UI 声明式界面协议），渲染引擎使用 Ant Design X 官方实现 [`@ant-design/x-card`](https://www.npmjs.com/package/@ant-design/x-card)。
 
@@ -18,20 +18,24 @@ UI 协议基于 [A2UI v0.9](https://github.com/google/A2UI)（Agent-to-UI 声明
 
 ```
 a2ui-render-in-dsh (一个 npm 包，dsh bundle)
-├─ 宿主端 lib/index.js            cordis 插件，注册两个 Agent 工具
-│    ├─ a2ui_render               渲染卡片（描述仅 ~140 token，常驻）
-│    └─ a2ui_catalog              返回完整组件目录与写卡规则（~975 token，按需一次）
-└─ 客户端 lib/client.js           浏览器 bundle，注册 a2ui_render 的专属 toolview
+├─ 宿主端 lib/index.js            cordis 插件，注册三个 Agent 工具
+│    ├─ a2ui_render               渲染卡片（描述仅 ~220 token，常驻）
+│    ├─ a2ui_update               按 surfaceId 原地更新已渲染的卡片
+│    │                            （进度推进、长任务回填、看板刷新）
+│    └─ a2ui_catalog              返回完整组件目录与写卡规则（按需加载，每会话一次）
+└─ 客户端 lib/client.js           浏览器 bundle，注册各工具的专属 toolview
      ├─ x-card 引擎（A2UI 命令流、数据绑定、action 解析）
-     ├─ 组件目录实现（18 个组件，跟随 --dsw-* 主题令牌）
-     └─ ECharts 6 / Mermaid 11 / KaTeX（字体内联）全部打入 bundle，零外部请求
+     ├─ 组件目录实现（44 个组件，跟随 --dsw-* 主题令牌）
+     ├─ 流式渲染器（截断 JSON 修复 → 模型边写卡片边出现）
+     └─ ECharts 6 / Mermaid 11 / KaTeX（字体内联）/ 中国省份 geoJSON
+        全部打入 bundle，零外部请求
 ```
 
 ### 关键设计决策
 
 **1. 主动式渲染，由模型判断。** 工具契约要求模型主动用卡：凡是向用户提问/要选择/要填写一律渲染表单卡（问题=字段，给选项时附"其他"输入框），数学符号一律走公式组件，可比较的数据主动出图表；纯叙述性解释才用文本。实测五类场景（问卷/选择/数学/看数据/纯解释）触发与克制均符合预期。
 
-**2. skill 式上下文设计（目录按需加载）。** 完整组件目录不内联在工具描述里，而是放进 `a2ui_catalog` 工具：常驻上下文从 ~1200 token 降到 ~211 token（-82%）；模型首次画卡前调用一次目录，同会话后续卡片直接复用；不画卡的会话零目录开销。服务端校验未知组件名并报错引导查目录，防止模型跳过目录瞎猜。
+**2. skill 式上下文设计（目录按需加载）。** 完整组件目录不内联在工具描述里，而是放进 `a2ui_catalog` 工具：组件扩到 44 个，常驻上下文仍稳定在 ~220 token；模型首次画卡前调用一次目录，同会话后续卡片直接复用；不画卡的会话零目录开销。服务端校验未知组件名并报错引导查目录，防止模型跳过目录瞎猜。
 
 **3. 非阻塞回传，复用原生消息通路。** 卡片提交不需要自定义 server 通道：客户端通过 dsh 自身的 `session.prompt` RPC 把提交内容作为普通用户消息发回会话。消息是**自然语言**（按钮文案 + 所选内容，多字段换行列出），对人可读、对模型可解析，不污染对话观感：
 
@@ -45,16 +49,25 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 
 **5. 模型只做擅长的事。** 数学函数绘图：模型只写表达式（`tan(x)`），采样、渐近线断线由内置**安全表达式求值器**完成（白名单 shunting-yard 解析，非 eval，注入即拒绝）——让模型手工枚举几百个数据点必然画错。算法动画：模型模拟算法输出逐帧状态（这是 LLM 强项），播放、过渡、控件由组件完成。
 
-**6. 展示组件全部自包含。** ECharts、Mermaid、KaTeX（含 woff2 字体 data-URI）全部打进 bundle（~5MB，本地服务一次加载），无 CDN 依赖、可离线；明暗主题按页面背景亮度自动跟随。
+**6. 展示组件全部自包含。** ECharts、Mermaid、KaTeX（含 woff2 字体 data-URI）、中国省份 geoJSON 全部打进 bundle（~5.5MB，本地服务一次加载），无 CDN 依赖、可离线；明暗主题按页面背景亮度自动跟随。
+
+**7. 活的卡片：流式渲染 + 原地更新。** 模型还在输出 JSON 时卡片就开始渲染（容错解析器修复截断的流，完整的组件提前挂载），大卡片逐块出现而不是长时间空白后一次性弹出。渲染完的卡片也不是死的：`a2ui_update` 按 `surfaceId` 原地替换组件或数据——进度条真的会动、任务卡自己填上结果、看板随时刷新；更新持久化，刷新页面后自动重放。
+
+**8. 回答不止于文字。** `Upload`（拍照/截图）和 `Signature`（手写画板）走 dsh 原生消息通路把**真实图片**发回给模型——模型看到的是图，不是占位符。`Suggestions` 渲染可点的追问 chips，点一下即作为下一条用户消息发出。录音回传刻意不做：dsh 的 prompt 通道只支持文本 + 图片。
 
 ## 亮点
 
 - 🎯 **自适应**：模型自行判断"文本还是卡片"，双向实测可靠
-- 🪶 **上下文友好**：skill 式目录设计，常驻开销 ~211 token
-- 💬 **优雅回传**：自然语言提交消息，非 JSON 裸串
-- 🔒 **提交即锁定**：表单防重复提交，记录持久化，查询按钮不受影响
-- 📊 **可视化全家桶**：ECharts 图表/仪表盘、函数绘图、Mermaid 全图型、KaTeX 公式（矩阵强制公式化渲染）、视频
-- 🎬 **算法动画**：数组/柱状 + 网格/矩阵双形态，自动识别；每卡只自动播一遍（组件重挂载不重播），↻ 手动重播、单步、进度条、图例
+- 🪶 **上下文友好**：skill 式目录设计，44 个组件常驻开销仅 ~220 token
+- 💬 **优雅回传**：自然语言提交消息，非 JSON 裸串；照片、签名以真实图片回传
+- 🔒 **提交即锁定**：表单防重复提交，记录持久化，"重新填写"可解锁；查询按钮不受影响
+- ⚡ **流式渲染**：模型边写 JSON，卡片边逐块出现
+- 🔄 **原地更新**：`a2ui_update` 按 surfaceId 更新已渲染的卡片——进度条会动、任务卡自己填结果、看板可刷新；刷新页面后重放
+- 📊 **可视化全家桶**：ECharts 图表/仪表盘、函数绘图、中国地图分布、Mermaid 全图型、KaTeX 公式（矩阵强制公式化渲染）、图片对比滑块、视频
+- 🎬 **算法动画**：数组/柱状、网格/矩阵、图/树三形态自动识别；每卡只自动播一遍（组件重挂载不重播），↻ 手动重播、单步、进度条、图例
+- 🧾 **交互表格**：点表头排序（识别数字）、筛选框、分页、复制 TSV、导出 CSV、可编辑表格输入
+- 🧭 **丰富作答组件**：分步向导 Wizard、日历选日期、RankList 排优先级、Suggestions 追问 chips、图片上传、手写签名
+- 📋 **一键复制**：指标块点击复制、表格复制/导出、代码块复制、公式复制 LaTeX 源码、图表下载 PNG、Markdown 复制原文
 - ⛶ **全屏放大**：思维导图/流程图/图表/图片一键全屏，自动适配视口，滚轮缩放 + 拖拽平移
 - 🧱 **一行多列**：Grid 布局做商品对比、图表仪表盘
 - 🎛️ **完整输入态**：下拉单选/多选、预选中（dataModel 初值）、组件级/选项级禁用
@@ -84,13 +97,16 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 | `List` | `children, direction?` | 列表容器 |
 | `Divider` | — | 分隔线 |
 | `Text` | `text, variant?: h1\|h2\|h3\|body\|caption\|strong` | 文本 |
+| `Markdown` | `text` | **富文本长文**：标题、加粗/斜体、链接、列表、引用、代码块、`$...$` 公式；带复制原文按钮 |
 | `Image` | `url, alt?, width?, height?` | 图片（含 GIF），自带全屏放大 |
 | `Tag` | `text, color?: blue\|green\|red\|orange\|gray` | 标签 |
 | `Math` | `tex, block?` | **KaTeX** 公式（字体内联零外部请求）；矩阵/向量必须走此组件 |
 | `Mermaid` | `code, caption?` | **Mermaid 11**：流程图/思维导图/时序图/甘特图等，自带全屏放大 |
-| `Chart` | `option, height?, functions?, xMin?, xMax?, samples?, yClip?` | **ECharts 6**：数据模式（option 透传）+ 函数绘图模式（表达式自动采样、渐近线断线），自带全屏 |
+| `Chart` | `option, height?, functions?, params?, xMin?, xMax?, samples?, yClip?` | **ECharts 6**：数据模式（option 透传）+ 函数绘图模式（表达式自动采样、渐近线断线）+ `params` 绑定常量（滑杆→曲线联动）；全屏 + 下载 PNG |
+| `Map` | `data, title?, unit?, height?` | **中国地图分布**：省级数据热力着色（分区销售/用户分布），geoJSON 内置 |
 | `Video` | `url, poster?, loop?, muted?, autoplay?` | HTML5 视频（mp4/webm） |
-| `Anim` | `frames, interval?, height?, autoplay?, labels?` | **算法动画**：数组/柱状与网格/矩阵双形态自动识别；每卡每页签只自动播一遍，↻ 重播/暂停/单步/重置/进度条/图例 |
+| `ImageCompare` | `before, after` | 拖动分割线的图片前后对比（before/after、A/B） |
+| `Anim` | `frames, interval?, height?, autoplay?, labels?` | **算法动画**：数组/柱状、网格/矩阵、图/树（BFS/DFS，自动圆形布局）三形态自动识别；每卡每页签只自动播一遍，↻ 重播/暂停/单步/重置/进度条/图例 |
 | `Button` | `label, variant?, submit?, action: {event: {name, context?}}` | 触发回传；`submit` 显式控制是否锁卡 |
 | `MultipleChoice` | `options, bind, maxAllowedSelections?, disabled?` | 平铺多选/单选（`maxAllowedSelections: 1` 单选），选项级禁用 |
 | `Select` | `options, bind, label?, placeholder?, multiple?, maxAllowedSelections?, disabled?` | **下拉选择**：单选存值、多选存数组，选项描述/禁用 |
@@ -100,8 +116,8 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 | `Calc` | `expr, inputs, out, digits?` | 隐形派生值：表达式实时重算写回数据模型（计算器引擎） |
 | `When` | `value, equals?/includes?/notEmpty?, children` | 条件容器：选中特定项才显示后续字段 |
 | `Tabs` | `tabs, children, bind?` | 页签：数据集切换 / 内容分组 |
-| `Table` | `columns, rows, caption?` | 对比/参数/价格表，支持字典绑定切换数据集 |
-| `Stat` | `label, value, unit?, trend?` | KPI 指标块，Grid 组合成速览行 |
+| `Table` | `columns, rows, caption?, sortable?, filter?, pageSize?` | **交互表格**：点表头排序（识别数字）、筛选框、分页、复制 TSV / 导出 CSV；字典绑定切换数据集 |
+| `Stat` | `label, value, unit?, trend?, hint?` | KPI 指标块，点击复制数值；Grid 组合成速览行 |
 | `Steps` | `items` | 步骤条（done/current/pending） |
 | `Progress` | `value, max?, label?` | 进度条 |
 | `Timeline` | `items` | 时间轴（历程/事件回顾） |
@@ -111,6 +127,13 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 | `Flashcard` | `front, back` | 点击翻面闪卡（背单词/问答记忆） |
 | `Countdown` | `to?/seconds?, label?` | 实时倒计时 |
 | `TextField` | `label?, placeholder?, multiline?, bind, disabled?` | 文本输入 |
+| `Wizard` | `steps, children, submitLabel?` | **分步表单**：每步一个面板，内置上一步/下一步 + 进度，最后一步提交全部字段 |
+| `Calendar` | `bind, label?, min?, max?` | 月视图日期选择，支持范围限制 |
+| `RankList` | `items, bind, label?` | 用户按优先级排序选项，提交排好的列表 |
+| `EditableTable` | `columns, rows, bind, label?` | 用户直接改单元格，整表提交 |
+| `Upload` | `bind?, label?, max?` | 图片选择器——所选照片以**真实图片**回传给模型 |
+| `Signature` | `label?` | 手写签名画板，笔迹以图片回传 |
+| `Suggestions` | `items` | 回答下方的可点追问 chips，点一下即作为下一条用户消息发出 |
 
 **内联公式**：所有文本位置（Text、选项、表格单元格、步骤、闪卡、动画解说）支持 `$...$` 内嵌 KaTeX——数学选择题的选项可以直接是公式。**响应式联动**：输入组件写数据模型，所有 `{"path"}` 绑定即时更新——滑杆→曲线（Chart `params`）、选择→追问（When）、输入→计算结果（Calc→Stat）、切换→换表（Tabs/Table 字典绑定）。
 

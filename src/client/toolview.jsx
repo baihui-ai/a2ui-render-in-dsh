@@ -5,8 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box as XCardBox, Card as XCardSurface } from "@ant-design/x-card";
 import { CATALOG, CardMirrorContext } from "./components.jsx";
 import { VIZ_CATALOG } from "./components-viz.jsx";
+import { Markdown } from "./markdown.jsx";
 
-const FULL_CATALOG = { ...CATALOG, ...VIZ_CATALOG };
+const FULL_CATALOG = { ...CATALOG, ...VIZ_CATALOG, Markdown };
 
 /**
  * Per-card store: dataModel snapshot mirror, per-field display texts (used to
@@ -58,7 +59,12 @@ function createMirror() {
 		lock() {
 			locked = true;
 			notify();
-		}
+		},
+		unlock() {
+			locked = false;
+			notify();
+		},
+		uploads: []
 	};
 	return store;
 }
@@ -91,15 +97,53 @@ function formatTime(at) {
 	return `${d.getMonth() + 1}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** Parse tool args from either lifecycle form; null while streaming/invalid. */
+/** Close a truncated JSON prefix: balance strings/brackets outside strings. */
+function closeJson(prefix) {
+	let inString = false;
+	let escaped = false;
+	const stack = [];
+	for (const ch of prefix) {
+		if (escaped) { escaped = false; continue; }
+		if (ch === "\\") { escaped = inString; continue; }
+		if (ch === '"') { inString = !inString; continue; }
+		if (inString) continue;
+		if (ch === "{" || ch === "[") stack.push(ch);
+		else if (ch === "}" || ch === "]") stack.pop();
+	}
+	let fixed = prefix;
+	if (inString) fixed += '"';
+	fixed = fixed.replace(/[,:]\s*$/, "");
+	while (stack.length > 0) fixed += stack.pop() === "{" ? "}" : "]";
+	return fixed;
+}
+
+/** Best-effort parse of a streaming (possibly truncated) args string. */
+function tolerantParse(raw) {
+	try { return JSON.parse(raw); } catch { /* keep repairing */ }
+	let cut = raw.length;
+	for (let attempt = 0; attempt < 24 && cut > 0; attempt++) {
+		try { return JSON.parse(closeJson(raw.slice(0, cut))); } catch { /* trim to previous member */ }
+		cut = raw.lastIndexOf(",", cut - 1);
+	}
+	return null;
+}
+
+/** Parse tool args from either lifecycle form; streaming args are repaired. */
 function parseArgs(block) {
 	const settled = "kind" in block;
 	const argsRaw = (settled ? block.call?.argsRaw : block.argsRaw) ?? "";
 	try {
 		const value = JSON.parse(argsRaw);
 		if (value !== null && typeof value === "object" && Array.isArray(value.components)) return value;
+		return null;
 	} catch {
-		// streaming or malformed — caller shows the placeholder row
+		if (settled) return null;
+	}
+	const repaired = tolerantParse(argsRaw);
+	if (repaired !== null && typeof repaired === "object" && Array.isArray(repaired.components)
+		&& repaired.components.some((node) => node !== null && typeof node === "object" && node.id === "root")) {
+		const complete = repaired.components.filter((node) => node !== null && typeof node === "object" && typeof node.id === "string" && typeof node.component === "string");
+		return { ...repaired, components: complete, __streaming: true };
 	}
 	return null;
 }
@@ -156,6 +200,56 @@ function buildSubmissionText(buttonLabel, context, mirror) {
 	return `${buttonLabel}\n${fields.map((field) => `${field.name}：${field.text}`).join("\n")}`;
 }
 
+/** Live surface registry: update calls route to mounted cards by callId. */
+const SURFACES = new Map();
+
+function updateCommands(surfaceId, update) {
+	const cmds = [];
+	if (Array.isArray(update.components) && update.components.length > 0) {
+		cmds.push({ version: "v0.9", updateComponents: { surfaceId, components: update.components } });
+	}
+	if (update.dataModel !== null && typeof update.dataModel === "object") {
+		for (const [key, value] of Object.entries(update.dataModel)) {
+			cmds.push({ version: "v0.9", updateDataModel: { surfaceId, path: `/${key}`, value } });
+		}
+	}
+	return cmds;
+}
+
+function readUpdates(key) {
+	try {
+		const raw = localStorage.getItem(key);
+		const list = raw === null ? [] : JSON.parse(raw);
+		return Array.isArray(list) ? list : [];
+	} catch { return []; }
+}
+
+/** The a2ui_update tool row: applies the update to the target card and records it. */
+export function A2uiUpdateView({ block, sessionId, t }) {
+	const settled = "kind" in block;
+	const argsRaw = (settled ? block.call?.argsRaw : block.argsRaw) ?? "";
+	const appliedRef = useRef(false);
+	let update = null;
+	try { update = JSON.parse(argsRaw); } catch { /* streaming */ }
+	useEffect(() => {
+		if (update === null || typeof update.surfaceId !== "string" || appliedRef.current) return;
+		appliedRef.current = true;
+		const storeKey = `dsh-a2ui:updates:${sessionId}:${update.surfaceId}`;
+		try {
+			const list = readUpdates(storeKey);
+			list.push({ components: update.components, dataModel: update.dataModel });
+			localStorage.setItem(storeKey, JSON.stringify(list));
+		} catch { /* storage unavailable */ }
+		SURFACES.get(update.surfaceId)?.(update);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [update !== null]);
+	if (update === null) return <div className="dsha2ui-skeleton"><span className="dsha2ui-pulse">↺</span></div>;
+	const parts = [];
+	if (Array.isArray(update.components) && update.components.length > 0) parts.push(`${update.components.length} 个组件`);
+	if (update.dataModel !== null && typeof update.dataModel === "object") parts.push(`${Object.keys(update.dataModel).length} 项数据`);
+	return <div className="dsha2ui-skeleton"><span>↺</span><span>{t("card.updated")}{parts.length > 0 ? `（${parts.join("、")}）` : ""}</span></div>;
+}
+
 export function A2uiToolView({ callId, block, sessionId, api, t }) {
 	const settled = "kind" in block;
 	const isError = settled && block.isError === true;
@@ -166,7 +260,7 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 	// Cards with input components are forms (a submission locks them); cards
 	// without inputs are browse-style — their buttons are queries and stay live.
 	const hasInputs = args !== null && args.components.some(
-		(node) => node !== null && typeof node === "object" && (node.component === "MultipleChoice" || node.component === "CheckBox" || node.component === "TextField" || node.component === "Select" || node.component === "Rate" || node.component === "Slider")
+		(node) => node !== null && typeof node === "object" && ["MultipleChoice", "CheckBox", "TextField", "Select", "Rate", "Slider", "Upload", "Calendar", "RankList", "Signature", "EditableTable", "Wizard"].includes(node.component)
 	);
 
 	const mirrorRef = useRef(null);
@@ -187,6 +281,13 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 	if (args !== null) mirrorRef.current.seed(args.dataModel);
 
 	const surfaceId = callId;
+	const updatesKey = `dsh-a2ui:updates:${sessionId}:${callId}`;
+	const [extraCommands, setExtraCommands] = useState(() => readUpdates(updatesKey).flatMap((update) => updateCommands(callId, update)));
+	useEffect(() => {
+		SURFACES.set(callId, (update) => setExtraCommands((prev) => [...prev, ...updateCommands(callId, update)]));
+		return () => { if (SURFACES.get(callId) !== undefined) SURFACES.delete(callId); };
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [callId]);
 	const commands = useMemo(() => {
 		if (args === null) return [];
 		const queue = [
@@ -198,8 +299,8 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 				queue.push({ version: "v0.9", updateDataModel: { surfaceId, path: `/${key}`, value } });
 			}
 		}
-		return queue;
-	}, [args, surfaceId]);
+		return [...queue, ...extraCommands];
+	}, [args, surfaceId, extraCommands]);
 
 	const [sendState, setSendState] = useState({ kind: "idle" });
 
@@ -212,11 +313,14 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 		}
 	}, [ready]);
 
+	const [resubmitting, setResubmitting] = useState(false);
 	const handleAction = useCallback(async (payload) => {
 		const meta = payload.context !== null && typeof payload.context === "object" ? payload.context : {};
 		const buttonLabel = typeof meta.__label === "string" && meta.__label !== "" ? meta.__label : "已提交";
-		const shouldLock = submitMode === "multi" ? false : typeof meta.__submit === "boolean" ? meta.__submit : hasInputs;
-		const text = buildSubmissionText(buttonLabel, payload.context, mirrorRef.current);
+		const isSuggestion = typeof meta.__suggestion === "string" && meta.__suggestion !== "";
+		const shouldLock = isSuggestion ? false : submitMode === "multi" ? false : typeof meta.__submit === "boolean" ? meta.__submit : hasInputs;
+		const baseText = isSuggestion ? meta.__suggestion : buildSubmissionText(buttonLabel, payload.context, mirrorRef.current);
+		const text = !isSuggestion && resubmitting ? `（修正）${baseText}` : baseText;
 		setSendState({ kind: "sending", name: buttonLabel });
 		mirrorRef.current.setBusy(true);
 		try {
@@ -226,23 +330,26 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 			} catch {
 				clientTimeZone = undefined;
 			}
+			const images = isSuggestion ? [] : (mirrorRef.current.uploads ?? []).map((file) => ({ type: "image", mediaType: file.mediaType, data: file.data, ...file.name !== undefined ? { name: file.name } : {} }));
 			const { result } = await api.sessions.prompt({
 				sessionId,
 				mode: "queue",
-				content: [{ type: "text", text }],
+				content: [{ type: "text", text }, ...images],
 				...clientTimeZone !== undefined ? { clientTimeZone } : {}
 			});
 			if (!result.ok) throw new Error(result.error?.message ?? result.error?.code ?? "prompt rejected");
 			const at = Date.now();
-			writeSubmissionRecord(storageKey, { text, at, data: mirrorRef.current.data, lock: shouldLock });
+			if (!isSuggestion) writeSubmissionRecord(storageKey, { text, at, data: mirrorRef.current.data, lock: shouldLock });
 			if (shouldLock) mirrorRef.current.lock();
-			setSendState({ kind: "sent", name: text.split("\n")[0] + (text.includes("\n") ? " …" : ""), at });
+			setResubmitting(false);
+			if (isSuggestion) setSendState({ kind: "idle" });
+			else setSendState({ kind: "sent", name: text.split("\n")[0] + (text.includes("\n") ? " …" : ""), at });
 		} catch (error) {
 			setSendState({ kind: "error", name: buttonLabel, message: String(error?.message ?? error) });
 		} finally {
 			mirrorRef.current.setBusy(false);
 		}
-	}, [api, sessionId, storageKey, submitMode, hasInputs]);
+	}, [api, sessionId, storageKey, submitMode, hasInputs, resubmitting]);
 
 	if (args === null) {
 		return (
@@ -266,10 +373,20 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 					</XCardBox>
 				</CardMirrorContext.Provider>
 			</div>
-			{sendState.kind !== "idle" ? (
+			{args.__streaming === true ? (
+				<div className="dsha2ui-foot"><span className="dsha2ui-pulse">{t("card.building")}</span></div>
+			) : sendState.kind !== "idle" ? (
 				<div className="dsha2ui-foot" data-kind={sendState.kind}>
 					{sendState.kind === "sending" ? <span className="dsha2ui-pulse">{t("card.sending")}</span> : null}
 					{sendState.kind === "sent" ? <span>✓ {sendState.name}{typeof sendState.at === "number" ? ` · ${formatTime(sendState.at)}` : ""}</span> : null}
+					{sendState.kind === "sent" && hasInputs ? (
+						<button type="button" className="dsha2ui-refill" onClick={() => {
+							mirrorRef.current.unlock();
+							setResubmitting(true);
+							setSendState({ kind: "idle" });
+							try { localStorage.removeItem(storageKey); } catch { /* storage unavailable */ }
+						}}>{t("card.refill")}</button>
+					) : null}
 					{sendState.kind === "error" ? <span>{t("card.error")} {sendState.message}</span> : null}
 				</div>
 			) : null}

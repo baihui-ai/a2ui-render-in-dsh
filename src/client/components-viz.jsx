@@ -14,6 +14,18 @@ import { compileScopedExpression } from "./expr.js";
 import { CardMirrorContext } from "./components.jsx";
 import { rich } from "./richtext.jsx";
 
+function useCopy() {
+	const [copied, setCopied] = useState(false);
+	const copy = (text) => {
+		try {
+			navigator.clipboard?.writeText(String(text));
+			setCopied(true);
+			setTimeout(() => setCopied(false), 1200);
+		} catch { /* clipboard unavailable */ }
+	};
+	return [copied, copy];
+}
+
 function VizError({ message }) {
 	return <div className="dsha2ui-viz-error">{message}</div>;
 }
@@ -96,7 +108,19 @@ function withSafeLayout(option) {
 
 export function Chart({ option, height, width, functions, params, xMin, xMax, samples, yClip }) {
 	const holder = useRef(null);
+	const chartInst = useRef(null);
 	const [error, setError] = useState(null);
+	const download = () => {
+		const chart = chartInst.current;
+		if (chart === null) return;
+		try {
+			const url = chart.getDataURL({ pixelRatio: 2, backgroundColor: isDarkTheme() ? "#1b1e25" : "#ffffff" });
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = "chart.png";
+			a.click();
+		} catch { /* canvas unavailable */ }
+	};
 	const functionMode = Array.isArray(functions) && functions.length > 0;
 
 	useEffect(() => {
@@ -110,6 +134,7 @@ export function Chart({ option, height, width, functions, params, xMin, xMax, sa
 				: option ?? {});
 			chart = echarts.init(node, isDarkTheme() ? "dark" : undefined);
 			chart.setOption(resolved, true);
+			chartInst.current = chart;
 		} catch (err) {
 			setError(String(err?.message ?? err));
 			chart?.dispose();
@@ -130,7 +155,7 @@ export function Chart({ option, height, width, functions, params, xMin, xMax, sa
 	if (!functionMode && (option === null || typeof option !== "object")) return <VizError message="Chart: missing option" />;
 	if (error !== null) return <VizError message={`Chart: ${error}`} />;
 	return (
-		<ZoomableFigure zoom={false} fullHeightClass="dsha2ui-fig-fill">
+		<ZoomableFigure zoom={false} fullHeightClass="dsha2ui-fig-fill" extraTool={{ title: "下载图片", icon: "⭳", onClick: download }}>
 			<div ref={holder} className="dsha2ui-chart" style={{ height: height ?? 300, width: width ?? "100%" }} />
 		</ZoomableFigure>
 	);
@@ -215,8 +240,18 @@ function MathFormula({ tex, block }) {
 	}
 	if (source === "") return <VizError message="Math: missing tex" />;
 	if (error !== null) return <VizError message={`Math: ${error}`} />;
-	const Tagname = block === true ? "div" : "span";
-	return <Tagname className={block === true ? "dsha2ui-math-block" : "dsha2ui-math"} dangerouslySetInnerHTML={{ __html: html }} />;
+	if (block !== true) return <span className="dsha2ui-math" dangerouslySetInnerHTML={{ __html: html }} />;
+	return <MathBlock html={html} source={source} />;
+}
+
+function MathBlock({ html, source }) {
+	const [copied, copy] = useCopy();
+	return (
+		<div className="dsha2ui-math-wrap">
+			<div className="dsha2ui-math-block" dangerouslySetInnerHTML={{ __html: html }} />
+			<button type="button" className="dsha2ui-copy-mini" onClick={() => copy(source)} title="复制 LaTeX">{copied ? "✓" : "复制"}</button>
+		</div>
+	);
 }
 
 const barGradient = (top, bottom) => ({
@@ -465,32 +500,97 @@ export function Anim({ frames, interval, height, autoplay, labels }) {
 	);
 }
 
-export function Table({ columns, rows, caption }) {
-	const cols = Array.isArray(columns) ? columns : [];
+export function Table({ columns, rows, caption, sortable, filter, pageSize }) {
+	// tolerate object-shaped columns ({label|title|key}) and rows ([{key: val}] or {text|value} cells)
+	const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+	const rawCols = Array.isArray(columns) ? columns : [];
+	const cols = rawCols.map((c) => isObj(c) ? String(c.label ?? c.title ?? c.header ?? c.name ?? c.key ?? "") : (c === null || c === undefined ? "" : c));
+	const colKeys = rawCols.map((c, i) => isObj(c) ? String(c.key ?? c.dataIndex ?? c.field ?? cols[i]) : String(cols[i]));
+	const cellVal = (v) => isObj(v) ? (v.text ?? v.value ?? v.label ?? JSON.stringify(v)) : v;
 	let rowsInput = rows;
-	// dictionary binding: rows: {source: {…datasets…}, pick: "<key>"} (both engine-resolved)
-	if (rowsInput !== null && typeof rowsInput === "object" && !Array.isArray(rowsInput) && rowsInput.source !== undefined) {
+	if (isObj(rowsInput) && rowsInput.source !== undefined) {
 		const source = rowsInput.source;
 		const key = rowsInput.pick;
 		rowsInput = source !== null && typeof source === "object" && key !== undefined ? source[String(key)] : undefined;
 	}
-	const data = Array.isArray(rowsInput) ? rowsInput.filter((row) => Array.isArray(row)) : [];
+	const data = !Array.isArray(rowsInput) ? [] : rowsInput.map((row) => {
+		if (Array.isArray(row)) return row.map(cellVal);
+		if (!isObj(row)) return null;
+		const byKey = colKeys.map((k, i) => row[k] !== undefined ? row[k] : row[cols[i]]);
+		return (byKey.some((v) => v !== undefined) ? byKey : Object.values(row)).map(cellVal);
+	}).filter((row) => row !== null);
+	const [sort, setSort] = useState(null); // {col, dir}
+	const [query, setQuery] = useState("");
+	const [page, setPage] = useState(0);
 	if (cols.length === 0 && data.length === 0) return <VizError message="Table: missing columns/rows" />;
+
+	const canSort = sortable !== false && data.length > 2;
+	let view = data;
+	if (query !== "") view = view.filter((row) => row.some((cell) => String(cell ?? "").toLowerCase().includes(query.toLowerCase())));
+	if (sort !== null) {
+		const numeric = view.every((row) => row[sort.col] === null || row[sort.col] === undefined || !Number.isNaN(parseFloat(String(row[sort.col]).replace(/[,¥$%万亿]/g, ""))));
+		view = [...view].sort((a, b) => {
+			const av = a[sort.col], bv = b[sort.col];
+			const cmp = numeric
+				? (parseFloat(String(av).replace(/[,¥$%万亿]/g, "")) || 0) - (parseFloat(String(bv).replace(/[,¥$%万亿]/g, "")) || 0)
+				: String(av ?? "").localeCompare(String(bv ?? ""), "zh");
+			return sort.dir === "asc" ? cmp : -cmp;
+		});
+	}
+	const size = typeof pageSize === "number" && pageSize >= 3 ? Math.floor(pageSize) : 10;
+	const paged = data.length > size;
+	const pages = paged ? Math.ceil(view.length / size) : 1;
+	const shown = paged ? view.slice(page * size, (page + 1) * size) : view;
+
+	const toTsv = () => [cols.join("\t"), ...view.map((row) => row.map((cell) => String(cell ?? "")).join("\t"))].join("\n");
+	const copy = () => { try { navigator.clipboard?.writeText(toTsv()); } catch { /* unavailable */ } };
+	const csv = () => {
+		const text = [cols, ...view].map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
+		const a = document.createElement("a");
+		a.href = URL.createObjectURL(new Blob(["\ufeff" + text], { type: "text/csv" }));
+		a.download = "table.csv";
+		a.click();
+	};
+
 	return (
 		<figure className="dsha2ui-tablefig">
+			<div className="dsha2ui-table-bar">
+				{filter === true || data.length > 8 ? <input className="dsha2ui-table-filter" placeholder="筛选…" value={query} onChange={(event) => { setQuery(event.target.value); setPage(0); }} /> : <span />}
+				<span className="dsha2ui-table-tools">
+					<button type="button" onClick={copy} title="复制（可粘贴到表格软件）">复制</button>
+					<button type="button" onClick={csv} title="下载 CSV">CSV</button>
+				</span>
+			</div>
 			<div className="dsha2ui-tablewrap">
 				<table className="dsha2ui-table">
 					{cols.length > 0 ? (
-						<thead><tr>{cols.map((cell, index) => <th key={index}>{cell === null || cell === undefined ? "" : String(cell)}</th>)}</tr></thead>
+						<thead><tr>{cols.map((cell, index) => (
+							<th key={index} data-sortable={canSort || undefined} onClick={() => {
+								if (!canSort) return;
+								setSort((prev) => prev !== null && prev.col === index ? (prev.dir === "asc" ? { col: index, dir: "desc" } : null) : { col: index, dir: "asc" });
+							}}>
+								{cell === null || cell === undefined ? "" : String(cell)}
+								{sort !== null && sort.col === index ? <span className="dsha2ui-table-arrow">{sort.dir === "asc" ? "▲" : "▼"}</span> : null}
+							</th>
+						))}</tr></thead>
 					) : null}
 					<tbody>
-						{data.map((row, r) => (
+						{shown.map((row, r) => (
 							<tr key={r}>{row.map((cell, c) => <td key={c}>{cell === null || cell === undefined ? "" : rich(cell)}</td>)}</tr>
 						))}
 					</tbody>
 				</table>
 			</div>
-			{typeof caption === "string" && caption !== "" ? <figcaption className="dsha2ui-text-caption">{caption}</figcaption> : null}
+			<div className="dsha2ui-table-foot">
+				{paged ? (
+					<span className="dsha2ui-table-pager">
+						<button type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>‹</button>
+						<span>{page + 1} / {pages}</span>
+						<button type="button" disabled={page >= pages - 1} onClick={() => setPage(page + 1)}>›</button>
+					</span>
+				) : <span />}
+				{typeof caption === "string" && caption !== "" ? <figcaption className="dsha2ui-text-caption">{caption}</figcaption> : <span />}
+			</div>
 		</figure>
 	);
 }
@@ -505,9 +605,10 @@ export function Stat({ label, value, unit, trend, hint }) {
 		const [arrow, color] = STAT_TRENDS[dir];
 		trendNode = <span className="dsha2ui-stat-trend" style={{ color }}>{arrow} {text.replace(/^[-+↑↓]/, "")}</span>;
 	}
+	const [copied, copy] = useCopy();
 	return (
-		<div className="dsha2ui-stat">
-			<span className="dsha2ui-stat-label">{label === undefined ? "" : String(label)}</span>
+		<div className="dsha2ui-stat" onClick={() => { if (value !== undefined && value !== null) copy(value); }} data-copied={copied || undefined} title="点击复制数值">
+			<span className="dsha2ui-stat-label">{label === undefined ? "" : String(label)}{copied ? <span className="dsha2ui-stat-copied">已复制</span> : null}</span>
 			<span className="dsha2ui-stat-value">
 				{value === undefined || value === null ? "—" : String(value)}
 				{typeof unit === "string" && unit !== "" ? <span className="dsha2ui-stat-unit">{unit}</span> : null}
@@ -718,4 +819,67 @@ export function Countdown({ to, seconds, label }) {
 	);
 }
 
-export const VIZ_CATALOG = { Chart, Mermaid, Math: MathFormula, Video, Anim, Table, Stat, Steps, CodeBlock, Progress, Timeline, Icon, Audio, Flashcard, Countdown };
+export function ImageCompare({ before, after, beforeLabel, afterLabel }) {
+	const [pos, setPos] = useState(50);
+	const boxRef = useRef(null);
+	if (typeof before !== "string" || typeof after !== "string") return <VizError message="ImageCompare: missing before/after" />;
+	const track = (event) => {
+		if (event.buttons !== 1 && event.type === "pointermove") return;
+		const rect = boxRef.current.getBoundingClientRect();
+		setPos(globalThis.Math.max(2, globalThis.Math.min(98, ((event.clientX - rect.left) / rect.width) * 100)));
+	};
+	return (
+		<div className="dsha2ui-imgcmp" ref={boxRef} onPointerDown={track} onPointerMove={track}>
+			<img src={before} alt={beforeLabel ?? "before"} />
+			<div className="after" style={{ width: `${pos}%` }}><img src={after} alt={afterLabel ?? "after"} /></div>
+			<div className="dsha2ui-imgcmp-bar" style={{ left: `${pos}%` }} />
+		</div>
+	);
+}
+
+let chinaMapRegistered = false;
+
+export function MapChart({ data, title, height, unit }) {
+	const holder = useRef(null);
+	const [error, setError] = useState(null);
+	useEffect(() => {
+		const node = holder.current;
+		if (node === null) return undefined;
+		let chart;
+		(async () => {
+			try {
+				if (!chinaMapRegistered) {
+					const geo = (await import("./china-geo.js")).default;
+					echarts.registerMap("china", geo);
+					chinaMapRegistered = true;
+				}
+				const list = Array.isArray(data) ? data.filter((item) => item !== null && typeof item === "object") : [];
+				const values = list.map((item) => Number(item.value)).filter(Number.isFinite);
+				chart = echarts.init(node, isDarkTheme() ? "dark" : undefined);
+				chart.setOption({
+					backgroundColor: "transparent",
+					...title !== undefined ? { title: { text: String(title), left: "center", textStyle: { fontSize: 14 } } } : {},
+					tooltip: { trigger: "item", formatter: (info) => `${info.name}: ${Number.isFinite(info.value) ? info.value : "—"}${unit ?? ""}` },
+					visualMap: { min: values.length > 0 ? globalThis.Math.min(...values) : 0, max: values.length > 0 ? globalThis.Math.max(...values) : 100, left: 10, bottom: 10, calculable: true, inRange: { color: ["#e8f0fd", "#5b9cf5", "#1668dc"] }, textStyle: { color: isDarkTheme() ? "#9aa3b2" : "#666" } },
+					series: [{ type: "map", map: "china", roam: true, label: { show: false }, emphasis: { label: { show: true, fontSize: 11 } }, data: list }]
+				});
+			} catch (err) {
+				setError(String(err?.message ?? err));
+			}
+		})();
+		let observer;
+		if (typeof ResizeObserver !== "undefined") {
+			observer = new ResizeObserver(() => chart?.resize());
+			observer.observe(node);
+		}
+		return () => { observer?.disconnect(); chart?.dispose(); };
+	}, [JSON.stringify(data), title]);
+	if (error !== null) return <VizError message={`Map: ${error}`} />;
+	return (
+		<ZoomableFigure zoom={false} fullHeightClass="dsha2ui-fig-fill">
+			<div ref={holder} className="dsha2ui-chart" style={{ height: height ?? 360, width: "100%" }} />
+		</ZoomableFigure>
+	);
+}
+
+export const VIZ_CATALOG = { Chart, Mermaid, Math: MathFormula, Video, Anim, Table, Stat, Steps, CodeBlock, Progress, Timeline, Icon, Audio, Flashcard, Countdown, ImageCompare, Map: MapChart };

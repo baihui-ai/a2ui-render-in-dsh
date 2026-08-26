@@ -12,6 +12,7 @@ import { createContext, useContext, useEffect, useRef, useState, useSyncExternal
 import { ZoomableFigure } from "./zoomable.jsx";
 import { compileScopedExpression } from "./expr.js";
 import { rich } from "./richtext.jsx";
+import { Steps } from "./components-viz.jsx";
 
 export const CardMirrorContext = createContext(null);
 
@@ -334,6 +335,68 @@ export function Calc({ expr, inputs, out, digits, onDataChange }) {
 	return null;
 }
 
+const UPLOAD_TYPES = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" };
+
+export function Upload({ bind, label, max, disabled, onDataChange }) {
+	const mirror = useContext(CardMirrorContext);
+	const write = useWriteBack(bind ?? "uploads", onDataChange);
+	const off = useDisabled() || disabled === true;
+	const limit = typeof max === "number" && max >= 1 && max <= 6 ? Math.floor(max) : 3;
+	const [files, setFiles] = useState([]);
+	const inputRef = useRef(null);
+
+	const sync = (next) => {
+		setFiles(next);
+		if (mirror !== null) mirror.uploads = next;
+		write(next.map((file) => file.name), { name: typeof label === "string" && label !== "" ? label : "附件", text: next.map((file) => file.name).join("、") });
+	};
+	const pick = (event) => {
+		const chosen = [...event.target.files ?? []].slice(0, limit - files.length);
+		event.target.value = "";
+		if (chosen.length === 0) return;
+		Promise.all(chosen.map((file) => new Promise((resolve) => {
+			const reader = new FileReader();
+			reader.onload = () => {
+				const comma = String(reader.result).indexOf(",");
+				resolve({ name: file.name, mediaType: UPLOAD_TYPES[file.type] !== undefined ? file.type : "image/png", data: String(reader.result).slice(comma + 1), preview: String(reader.result) });
+			};
+			reader.readAsDataURL(file);
+		}))).then((loaded) => sync([...files, ...loaded]));
+	};
+	return (
+		<div className="dsha2ui-field">
+			{typeof label === "string" && label !== "" ? <span className="dsha2ui-field-label">{label}</span> : null}
+			<div className="dsha2ui-upload">
+				{files.map((file, index) => (
+					<span key={index} className="dsha2ui-upload-item">
+						<img src={file.preview} alt={file.name} />
+						{!off ? <button type="button" className="dsha2ui-upload-x" aria-label="移除" onClick={() => sync(files.filter((_, i) => i !== index))}>✕</button> : null}
+					</span>
+				))}
+				{files.length < limit && !off ? (
+					<button type="button" className="dsha2ui-upload-add" onClick={() => inputRef.current?.click()}>＋<span>选择图片</span></button>
+				) : null}
+				<input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple style={{ display: "none" }} onChange={pick} />
+			</div>
+		</div>
+	);
+}
+
+/** Suggested follow-up questions; a tap sends the question as the user's message. */
+export function Suggestions({ items, onAction }) {
+	const off = useDisabled();
+	const list = Array.isArray(items) ? items.map((item) => String(item)).filter((item) => item !== "") : [];
+	if (list.length === 0) return null;
+	return (
+		<div className="dsha2ui-suggest">
+			{list.map((item, index) => (
+				<button key={index} type="button" className="dsha2ui-suggest-chip" disabled={off}
+					onClick={() => onAction?.("suggestion", { __label: item, __suggestion: item, __submit: false })}>{item}</button>
+			))}
+		</div>
+	);
+}
+
 export function Rate({ bind, label, max, disabled, onDataChange }) {
 	const initial = useInitial(bind);
 	const write = useWriteBack(bind, onDataChange);
@@ -469,6 +532,207 @@ export function Select({ options, bind, placeholder, multiple, maxAllowedSelecti
 	);
 }
 
+export function Wizard({ steps, children, submitLabel, onAction }) {
+	const off = useDisabled();
+	const labels = Array.isArray(steps) ? steps.map((step) => String(step)) : [];
+	const panes = Array.isArray(children) ? children : children !== undefined ? [children] : [];
+	const [current, setCurrent] = useState(0);
+	if (labels.length === 0) return <div className="dsha2ui-when">{children}</div>;
+	const last = current === labels.length - 1;
+	return (
+		<div className="dsha2ui-wizard">
+			<Steps items={labels.map((title, index) => ({ title, status: index < current ? "done" : index === current ? "current" : "pending" }))} />
+			<div className="dsha2ui-when">{panes[current] ?? null}</div>
+			<div className="dsha2ui-wizard-nav">
+				{current > 0 ? <button type="button" className="dsha2ui-btn" disabled={off} onClick={() => setCurrent(current - 1)}>上一步</button> : null}
+				{!last ? <button type="button" className="dsha2ui-btn" data-variant="primary" disabled={off} onClick={() => setCurrent(current + 1)}>下一步</button>
+					: <button type="button" className="dsha2ui-btn" data-variant="primary" disabled={off} onClick={() => onAction?.("wizard_submit", { __label: typeof submitLabel === "string" && submitLabel !== "" ? submitLabel : "提交" })}>{typeof submitLabel === "string" && submitLabel !== "" ? submitLabel : "提交"}</button>}
+			</div>
+		</div>
+	);
+}
+
+const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
+
+export function Calendar({ bind, label, min, max, disabled, onDataChange }) {
+	const initial = useInitial(bind);
+	const write = useWriteBack(bind, onDataChange);
+	const off = useDisabled() || disabled === true;
+	const today = new Date();
+	const parse = (value) => (typeof value === "string" && !Number.isNaN(Date.parse(value)) ? new Date(value) : null);
+	const [selected, setSelected] = useState(() => parse(initial));
+	const [view, setView] = useState(() => {
+		const base = parse(initial) ?? today;
+		return { y: base.getFullYear(), m: base.getMonth() };
+	});
+	const fmt = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+	const lo = parse(min);
+	const hi = parse(max);
+	const first = new Date(view.y, view.m, 1);
+	const offset = (first.getDay() + 6) % 7;
+	const cells = [];
+	for (let i = 0; i < 42; i++) {
+		const date = new Date(view.y, view.m, 1 - offset + i);
+		cells.push(date);
+	}
+	const pick = (date) => {
+		if (off) return;
+		setSelected(date);
+		write(fmt(date), { name: typeof label === "string" && label !== "" ? label : "日期", text: fmt(date) });
+	};
+	return (
+		<div className="dsha2ui-field">
+			{typeof label === "string" && label !== "" ? <span className="dsha2ui-field-label">{label}</span> : null}
+			<div className="dsha2ui-calendar">
+				<div className="dsha2ui-calendar-head">
+					<button type="button" onClick={() => setView((prev) => (prev.m === 0 ? { y: prev.y - 1, m: 11 } : { y: prev.y, m: prev.m - 1 }))}>‹</button>
+					<span>{view.y} 年 {view.m + 1} 月</span>
+					<button type="button" onClick={() => setView((prev) => (prev.m === 11 ? { y: prev.y + 1, m: 0 } : { y: prev.y, m: prev.m + 1 }))}>›</button>
+				</div>
+				<div className="dsha2ui-calendar-grid">
+					{WEEKDAYS.map((day) => <span key={day} className="wd">{day}</span>)}
+					{cells.map((date, index) => {
+						const out = (lo !== null && fmt(date) < fmt(lo)) || (hi !== null && fmt(date) > fmt(hi));
+						const isSel = selected !== null && fmt(date) === fmt(selected);
+						return (
+							<button key={index} type="button" className="dsha2ui-calendar-day"
+								data-selected={isSel || undefined}
+								data-other={date.getMonth() !== view.m || undefined}
+								disabled={off || out}
+								onClick={() => pick(date)}>{date.getDate()}</button>
+						);
+					})}
+				</div>
+			</div>
+		</div>
+	);
+}
+
+export function RankList({ items, bind, label, disabled, onDataChange }) {
+	const initial = useInitial(bind);
+	const write = useWriteBack(bind, onDataChange);
+	const off = useDisabled() || disabled === true;
+	const source = Array.isArray(items) ? items.map((item) => String(item)) : [];
+	const [order, setOrder] = useState(() => (Array.isArray(initial) && initial.length === source.length ? initial.map(String) : source));
+	const move = (index, delta) => {
+		if (off) return;
+		const target = index + delta;
+		if (target < 0 || target >= order.length) return;
+		const next = [...order];
+		[next[index], next[target]] = [next[target], next[index]];
+		setOrder(next);
+		write(next, { name: typeof label === "string" && label !== "" ? label : "排序", text: next.join(" > ") });
+	};
+	if (source.length === 0) return null;
+	return (
+		<div className="dsha2ui-field">
+			{typeof label === "string" && label !== "" ? <span className="dsha2ui-field-label">{label}</span> : null}
+			<div className="dsha2ui-ranklist">
+				{order.map((item, index) => (
+					<div key={item} className="dsha2ui-rank-item">
+						<span className="dsha2ui-rank-no">{index + 1}</span>
+						<span className="dsha2ui-rank-label">{rich(item)}</span>
+						<span className="dsha2ui-rank-btns">
+							<button type="button" disabled={off || index === 0} onClick={() => move(index, -1)} aria-label="上移">↑</button>
+							<button type="button" disabled={off || index === order.length - 1} onClick={() => move(index, 1)} aria-label="下移">↓</button>
+						</span>
+					</div>
+				))}
+			</div>
+		</div>
+	);
+}
+
+export function Signature({ label, disabled, onDataChange }) {
+	const mirror = useContext(CardMirrorContext);
+	const off = useDisabled() || disabled === true;
+	const canvasRef = useRef(null);
+	const drawingRef = useRef(false);
+	const [dirty, setDirty] = useState(false);
+	const point = (event) => {
+		const rect = canvasRef.current.getBoundingClientRect();
+		return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+	};
+	const start = (event) => {
+		if (off) return;
+		drawingRef.current = true;
+		const ctx = canvasRef.current.getContext("2d");
+		const { x, y } = point(event);
+		ctx.beginPath();
+		ctx.moveTo(x, y);
+		event.currentTarget.setPointerCapture?.(event.pointerId);
+	};
+	const draw = (event) => {
+		if (!drawingRef.current) return;
+		const ctx = canvasRef.current.getContext("2d");
+		ctx.lineWidth = 2.2;
+		ctx.lineCap = "round";
+		ctx.strokeStyle = "#1f2430";
+		const { x, y } = point(event);
+		ctx.lineTo(x, y);
+		ctx.stroke();
+		setDirty(true);
+	};
+	const finish = () => {
+		if (!drawingRef.current) return;
+		drawingRef.current = false;
+		if (mirror !== null && canvasRef.current !== null) {
+			const url = canvasRef.current.toDataURL("image/png");
+			const comma = url.indexOf(",");
+			mirror.uploads = [...(mirror.uploads ?? []).filter((file) => file.name !== "signature.png"), { name: "signature.png", mediaType: "image/png", data: url.slice(comma + 1), preview: url }];
+		}
+	};
+	const clear = () => {
+		const canvas = canvasRef.current;
+		canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+		setDirty(false);
+		if (mirror !== null) mirror.uploads = (mirror.uploads ?? []).filter((file) => file.name !== "signature.png");
+	};
+	return (
+		<div className="dsha2ui-sign">
+			{typeof label === "string" && label !== "" ? <span className="dsha2ui-field-label">{label}</span> : null}
+			<canvas ref={canvasRef} width={420} height={140}
+				onPointerDown={start} onPointerMove={draw} onPointerUp={finish} onPointerCancel={finish} />
+			<div className="dsha2ui-sign-tools">
+				<button type="button" className="dsha2ui-btn dsha2ui-btn-mini" disabled={off || !dirty} onClick={clear}>清除重签</button>
+			</div>
+		</div>
+	);
+}
+
+export function EditableTable({ columns, rows, bind, label, disabled, onDataChange }) {
+	const initial = useInitial(bind);
+	const write = useWriteBack(bind, onDataChange);
+	const off = useDisabled() || disabled === true;
+	const cols = Array.isArray(columns) ? columns.map(String) : [];
+	const seed = Array.isArray(initial) && initial.length > 0 ? initial : Array.isArray(rows) ? rows : [];
+	const [grid, setGrid] = useState(() => seed.map((row) => (Array.isArray(row) ? row.map((cell) => String(cell ?? "")) : [])));
+	const edit = (r, c, value) => {
+		if (off) return;
+		const next = grid.map((row, ri) => (ri === r ? row.map((cell, ci) => (ci === c ? value : cell)) : row));
+		setGrid(next);
+		write(next, { name: typeof label === "string" && label !== "" ? label : "表格", text: `${next.length} 行 × ${cols.length} 列` });
+	};
+	if (cols.length === 0) return null;
+	return (
+		<div className="dsha2ui-field">
+			{typeof label === "string" && label !== "" ? <span className="dsha2ui-field-label">{label}</span> : null}
+			<div className="dsha2ui-tablewrap">
+				<table className="dsha2ui-table dsha2ui-etable">
+					<thead><tr>{cols.map((cell, index) => <th key={index}>{cell}</th>)}</tr></thead>
+					<tbody>
+						{grid.map((row, r) => (
+							<tr key={r}>{cols.map((_, c) => (
+								<td key={c}><input value={row[c] ?? ""} disabled={off} onChange={(event) => edit(r, c, event.target.value)} /></td>
+							))}</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	);
+}
+
 export const CATALOG = {
 	Column,
 	Row,
@@ -483,6 +747,13 @@ export const CATALOG = {
 	CheckBox,
 	MultipleChoice,
 	Rate,
+	Upload,
+	Suggestions,
+	Wizard,
+	Calendar,
+	RankList,
+	Signature,
+	EditableTable,
 	Select,
 	Slider,
 	When,

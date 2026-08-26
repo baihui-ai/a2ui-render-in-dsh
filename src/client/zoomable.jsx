@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 const SCALE_MIN = 0.2;
 const SCALE_MAX = 10;
 
-export function ZoomableFigure({ caption, zoom = true, fullHeightClass, children }) {
+export function ZoomableFigure({ caption, zoom = true, fullHeightClass, extraTool, children }) {
 	const boxRef = useRef(null);
 	const [mode, setMode] = useState(null); // null | "fs" | "overlay"
 	const [view, setView] = useState({ x: 0, y: 0, s: 1 });
@@ -110,9 +110,14 @@ export function ZoomableFigure({ caption, zoom = true, fullHeightClass, children
 			className={`dsha2ui-fig${mode === "overlay" ? " dsha2ui-fig-overlay" : ""}`}
 			data-fs={active || undefined}
 		>
-			<button type="button" className="dsha2ui-fig-expand" onClick={toggle} title={active ? "退出全屏 (Esc)" : "全屏查看"}>
-				{active ? "✕" : "⛶"}
-			</button>
+			<span className="dsha2ui-fig-tools">
+				{extraTool !== undefined && !active ? (
+					<button type="button" className="dsha2ui-fig-expand" onClick={extraTool.onClick} title={extraTool.title}>{extraTool.icon}</button>
+				) : null}
+				<button type="button" className="dsha2ui-fig-expand" onClick={toggle} title={active ? "退出全屏 (Esc)" : "全屏查看"}>
+					{active ? "✕" : "⛶"}
+				</button>
+			</span>
 			<div
 				className={`dsha2ui-fig-body${active && fullHeightClass !== undefined ? ` ${fullHeightClass}` : ""}`}
 				style={active && zoom ? { transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})`, cursor: "grab" } : undefined}

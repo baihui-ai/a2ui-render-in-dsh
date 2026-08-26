@@ -1,5 +1,5 @@
 // dsh-a2ui client half: registers the a2ui_render toolview and its locale.
-import { A2uiToolView } from "./toolview.jsx";
+import { A2uiToolView, A2uiUpdateView } from "./toolview.jsx";
 import { injectStyles } from "./styles.js";
 
 injectStyles();
@@ -12,7 +12,9 @@ const zh = {
 	"card.invalid": "界面描述解析失败",
 	"card.sending": "正在提交…",
 	"card.sent": "已提交",
-	"card.error": "提交失败："
+	"card.error": "提交失败：",
+	"card.refill": "重新填写",
+	"card.updated": "已更新卡片"
 };
 
 const en = {
@@ -21,7 +23,9 @@ const en = {
 	"card.invalid": "Could not parse the UI payload",
 	"card.sending": "Submitting…",
 	"card.sent": "Submitted",
-	"card.error": "Submit failed:"
+	"card.error": "Submit failed:",
+	"card.refill": "Refill",
+	"card.updated": "Card updated"
 };
 
 export const name = "a2ui-client";
@@ -39,4 +43,9 @@ export function apply(ctx) {
 		key: "a2ui_render",
 		locale: NS
 	}, View));
+	ctx.slots.inject("tool.call.toolview", () => ctx.slots.register({
+		name: "tool.call.toolview",
+		key: "a2ui_update",
+		locale: NS
+	}, A2uiUpdateView));
 }
