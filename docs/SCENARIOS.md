@@ -9,7 +9,7 @@ Research conclusions on "which chat scenario deserves which UI", across learning
 | Scenario | Recipe |
 |---|---|
 | Quizzes / tests | MultipleChoice form (options may be `$...$` formulas), lock-on-submit grading |
-| Intake / surveys | Multi-field forms (TextField / Select / Rate) |
+| Intake / surveys | Multi-field forms (TextField / Select / Rate, `required` on must-fills); 5+ questions -> Wizard steps |
 | Formulas / derivations | Math; inline math via `$...$` |
 | Function graphs | Chart functions (expression sampling) |
 | Parameter exploration | Slider + Chart `params` (drag μ, σ, watch the curve morph) |
@@ -17,21 +17,26 @@ Research conclusions on "which chat scenario deserves which UI", across learning
 | Concept maps | Mermaid mindmap |
 | Study plans / progress | Steps; practice trends via Stat + Chart |
 | Vocabulary / recall | Flashcard |
+| Long-form study notes | Markdown (headings, lists, fenced code, `$...$`) |
+| Reading-comprehension code questions | Text(stem) + CodeBlock(code) + TextField(answer) |
 | Code teaching | CodeBlock |
 
 ## Daily life
 
 | Scenario | Recipe |
 |---|---|
-| Scheduling | TextField kind:"date"/"time" |
+| Scheduling / booking | Calendar (`range: true` for stays), TextField kind:"time" |
 | Ordering / shopping | Grid product cards + query buttons |
 | Recipes / how-tos | Steps; branching flows via Mermaid |
 | Itineraries | Steps per day + Tabs + Table |
 | Budgets / calculators | Slider + Calc + Stat (loans/BMI/conversions, live) |
 | Health trends | Chart + Stat |
 | Ratings | Rate (+When for follow-up reasons) |
+| Priority sorting | RankList (drag or tap to reorder) |
+| Photos / receipts to show the model | Upload (compressed client-side, arrives as real images) |
 | Household votes | MultipleChoice |
 | Countdowns | Countdown |
+| Sign-offs | Signature (returns as an image) |
 
 ## Work
 
@@ -40,8 +45,10 @@ Research conclusions on "which chat scenario deserves which UI", across learning
 | Meeting-time collection | Form (date/time + slot multi-select) |
 | Option comparison | Table + Grid cards |
 | Weekly data reports | Grid + Stat row + Chart |
+| Regional distribution | Map (China choropleth, short or full province names) |
+| Editable grids (budgets, rosters) | EditableTable (cell edits ship in the submission) |
 | Period switching | Tabs or Table dictionary binding |
-| Project progress | Steps + Progress |
+| Project progress | Steps + Progress, advanced in place via `a2ui_update` |
 | Retrospectives | Timeline |
 | Flows / architecture / schedules | Mermaid (flowchart/sequence/gantt) |
 | Approvals | Button submit:true |
@@ -58,6 +65,8 @@ Research conclusions on "which chat scenario deserves which UI", across learning
 | Interactive fiction | Sequential single-choice cards |
 | Music / podcasts | Audio |
 | Clips | Video |
+| Before/after comparisons | ImageCompare (drag divider) |
+| Follow-up suggestions | Suggestions chips (tap to send) |
 
 ## Reactive interactions
 
@@ -68,6 +77,17 @@ Bindings are reactive: inputs write the data model and every `{"path"}` binding 
 - **Input → computation**: Calc derived values, displayed live by bound Stat/Chart
 - **Switcher → dataset**: Tabs panes, or Table `rows: {source, pick}` dictionary binding
 
-## Trigger principle
+## Trigger principle: UI's four purposes
 
-Asking the user anything → always a form card; math notation → always Math / `$...$`; comparable data → charts/tables/stat tiles; linear procedures → Steps; narrative explanation → plain text.
+A card renders when it serves any of these better than prose — none of them requires UI keywords in the prompt:
+
+- **Act** 操作 — the user must answer/choose/fill/adjust/confirm → form card
+- **Browse** 浏览 — the user wants to see/scan data or items (statistics, rankings, distributions, trends, multi-item recommendations) → chart/table/map/Grid; uncertain data never cancels the card (best-known data, labeled period, caveats in prose)
+- **Understand** 理解 — structure, notation or motion aids comprehension (math, code, flows, time-unfolding processes) → formula/code block/diagram/step animation
+- **Feedback** 反馈 — multi-step work renders a Progress/Steps card first and advances it via `a2ui_update`
+
+None of the four (opinions, narration, short answers, translations, chat) → prose. Cards always pair with 1–3 sentences of prose takeaway.
+
+## Session navigator
+
+Every session with form cards gets a right-edge drawer: a Tasks tab (to-submit / submitted groups with fill counts, previews, dismissals) and an All tab (every user message in full, click-to-locate). Drafts persist across reloads; submitted-state survives cache clears via transcript reconstruction.

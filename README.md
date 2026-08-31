@@ -28,6 +28,7 @@ a2ui-render-in-dsh (one npm package, a dsh bundle)
      ├─ x-card engine (A2UI command stream, data binding, action resolution)
      ├─ component catalog implementations (44 components, themed via --dsw-* tokens)
      ├─ streaming renderer (truncated-JSON repair → cards appear while the model types)
+     ├─ session navigator (tasks + full-chat locating, drafts, transcript rebuild)
      └─ ECharts 6 / Mermaid 11 / KaTeX (fonts inlined) / China geoJSON all bundled
         — zero external requests
 ```
@@ -55,6 +56,8 @@ Tracks: Backend, Data Analysis
 **7. Live cards: streaming in, updating in place.** Cards render progressively while the model is still emitting JSON (a tolerant parser repairs the truncated stream and mounts complete components early), so a big dashboard appears piece by piece instead of after a long pause. And a rendered card is not frozen: `a2ui_update` addresses it by `surfaceId` to patch components or data in place — progress bars that actually move, task cards that fill in results, dashboards that refresh. Updates persist and replay after a page reload.
 
 **8. Answers beyond text.** `Upload` (photos) and `Signature` (hand-drawn canvas) send images back through dsh's native prompt channel as real image parts — the model sees the picture, not a placeholder. `Suggestions` renders tappable follow-up chips that send themselves as the next user message. Voice recording is deliberately excluded: dsh's prompt channel carries text + images only.
+
+**9. State that outlives the browser.** Drafts auto-save as you type (reload-safe); submissions lock cards with persisted records; and when even localStorage is gone, the client reconstructs submitted-state from the session transcript itself — render calls carry ids, submission messages match back by button label, errored calls excluded. The session navigator surfaces all of it: to-submit/submitted task groups and a full, clickable map of every user message.
 
 ## Highlights
 
@@ -100,7 +103,7 @@ Tracks: Backend, Data Analysis
 | `Card` | `children, title?` | Bordered group |
 | `List` | `children, direction?` | List container |
 | `Divider` | — | Separator |
-| `Text` | `text, variant?: h1\|h2\|h3\|body\|caption\|strong` | Text |
+| `Text` | `text, variant?: h1\|h2\|h3\|body\|caption\|strong` | Text; fenced ``` content auto-upgrades to a formatted code block; inline `` `code` `` renders as code chips |
 | `Markdown` | `text` | **Rich long-form**: headings, bold/italic, links, lists, quotes, fenced code, `$...$` math; copy-source button |
 | `Image` | `url, alt?, width?, height?` | Images (incl. GIF), built-in fullscreen zoom |
 | `Tag` | `text, color?: blue\|green\|red\|orange\|gray` | Tag/badge |
@@ -125,7 +128,7 @@ Tracks: Backend, Data Analysis
 | `Steps` | `items` | Step list (done/current/pending) |
 | `Progress` | `value, max?, label?` | Progress bar |
 | `Timeline` | `items` | Timeline (history / event review) |
-| `CodeBlock` | `code, language?, title?` | Code with line numbers, light highlighting, copy button |
+| `CodeBlock` | `code, language?, title?` | Code with line numbers, light highlighting, copy button — quiz stems included (never inline code in Text) |
 | `Icon` | `name, size?, color?` | 32 built-in stroke icons |
 | `Audio` | `url, title?` | Audio player |
 | `Flashcard` | `front, back` | Tap-to-flip card (vocabulary / recall) |
@@ -151,7 +154,7 @@ Common to inputs: **preselect** by seeding `dataModel` at the bind path; **disab
 |---|---|
 | dsh | `@deepseek-ai/dsh` ≥ 0.1.1-rc.1 with an initialized web profile (run `dsh web` once before installing) |
 
-Development: `npm test` runs the jsdom interaction suite (host validation + full component/interaction coverage, ~50 assertions).
+Development: `npm test` runs the jsdom interaction suite (host validation + full component/interaction coverage, ~70 assertions).
 | Node.js | ≥ 20 (with npm) |
 
 ### Option A · From npm (recommended)

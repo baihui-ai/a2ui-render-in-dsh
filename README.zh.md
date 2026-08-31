@@ -27,6 +27,7 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
      ├─ x-card 引擎（A2UI 命令流、数据绑定、action 解析）
      ├─ 组件目录实现（44 个组件，跟随 --dsw-* 主题令牌）
      ├─ 流式渲染器（截断 JSON 修复 → 模型边写卡片边出现）
+     ├─ 会话导航（任务分组 + 全会话定位 + 草稿 + 会话记录重建）
      └─ ECharts 6 / Mermaid 11 / KaTeX（字体内联）/ 中国省份 geoJSON
         全部打入 bundle，零外部请求
 ```
@@ -54,6 +55,8 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 **7. 活的卡片：流式渲染 + 原地更新。** 模型还在输出 JSON 时卡片就开始渲染（容错解析器修复截断的流，完整的组件提前挂载），大卡片逐块出现而不是长时间空白后一次性弹出。渲染完的卡片也不是死的：`a2ui_update` 按 `surfaceId` 原地替换组件或数据——进度条真的会动、任务卡自己填上结果、看板随时刷新；更新持久化，刷新页面后自动重放。
 
 **8. 回答不止于文字。** `Upload`（拍照/截图）和 `Signature`（手写画板）走 dsh 原生消息通路把**真实图片**发回给模型——模型看到的是图，不是占位符。`Suggestions` 渲染可点的追问 chips，点一下即作为下一条用户消息发出。录音回传刻意不做：dsh 的 prompt 通道只支持文本 + 图片。
+
+**9. 比浏览器更长寿的状态。** 草稿边填边存（刷新不丢）；提交锁卡并持久化记录；即使 localStorage 全清，客户端也能从**会话记录本身**重建已提交状态——渲染调用带 id、提交消息按按钮文案回配、失败调用被排除。会话导航把这一切摆到明面：待提交/已提交任务分组 + 每条用户消息的可点击地图。
 
 ## 亮点
 
@@ -99,7 +102,7 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 | `Card` | `children, title?` | 带边框分组 |
 | `List` | `children, direction?` | 列表容器 |
 | `Divider` | — | 分隔线 |
-| `Text` | `text, variant?: h1\|h2\|h3\|body\|caption\|strong` | 文本 |
+| `Text` | `text, variant?: h1\|h2\|h3\|body\|caption\|strong` | 文本；含 ``` 围栏时自动升级为格式化代码块；行内 `` `code` `` 渲染为代码片 |
 | `Markdown` | `text` | **富文本长文**：标题、加粗/斜体、链接、列表、引用、代码块、`$...$` 公式；带复制原文按钮 |
 | `Image` | `url, alt?, width?, height?` | 图片（含 GIF），自带全屏放大 |
 | `Tag` | `text, color?: blue\|green\|red\|orange\|gray` | 标签 |
@@ -124,7 +127,7 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 | `Steps` | `items` | 步骤条（done/current/pending） |
 | `Progress` | `value, max?, label?` | 进度条 |
 | `Timeline` | `items` | 时间轴（历程/事件回顾） |
-| `CodeBlock` | `code, language?, title?` | 代码块：行号 + 轻量高亮 + 复制按钮 |
+| `CodeBlock` | `code, language?, title?` | 代码块：行号 + 轻量高亮 + 复制——读代码题的题干代码也走这里（不许塞进 Text） |
 | `Icon` | `name, size?, color?` | 内置 32 个常用线条图标 |
 | `Audio` | `url, title?` | 音频播放器 |
 | `Flashcard` | `front, back` | 点击翻面闪卡（背单词/问答记忆） |
@@ -150,7 +153,7 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 |---|---|
 | dsh | `@deepseek-ai/dsh` ≥ 0.1.1-rc.1，且 web profile 已初始化（装插件前先运行过一次 `dsh web`） |
 
-开发：`npm test` 运行 jsdom 交互测试套件（宿主校验 + 组件/交互全覆盖，约 50 条断言）。
+开发：`npm test` 运行 jsdom 交互测试套件（宿主校验 + 组件/交互全覆盖，约 70 条断言）。
 | Node.js | ≥ 20（含 npm） |
 
 ### 方式 A · npm 安装（推荐）
