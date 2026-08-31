@@ -180,6 +180,7 @@ function setSkipped(sessionId, callId, next) {
 // Registry + floating panel (vanilla DOM: one fixed element per page).
 
 const cards = new Map(); // callId -> {sessionId, title, kind, fields, mirror, getNode, status, order}
+let liveTimer = null; // refreshes the transcript while the drawer is open
 let orderCounter = 0;
 let panel = null;
 let tRef = (key) => key;
@@ -322,11 +323,11 @@ function fmtAt(at) {
 	if (typeof at !== "number") return "";
 	const d = new Date(at);
 	const pad = (n) => String(n).padStart(2, "0");
-	return `${d.getMonth() + 1}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function stateLabel(state) {
-	if (state.key === "done") return `✓ ${tRef("todo.done")}${typeof state.at === "number" ? ` ${new Date(state.at).getHours()}:${String(new Date(state.at).getMinutes()).padStart(2, "0")}` : ""}`;
+	if (state.key === "done") return `✓ ${tRef("todo.done")}${typeof state.at === "number" ? ` ${fmtAt(state.at)}` : ""}`;
 	if (state.key === "skipped") return tRef("todo.skipped");
 	if (state.key === "partial") return `${tRef("todo.filled")} ${state.filled}/${state.total}`;
 	if (state.key === "empty") return state.total > 0 ? `${tRef("todo.unfilled")} 0/${state.total}` : tRef("todo.unfilled");
@@ -372,6 +373,20 @@ function renderPanel() {
 	panel.textContent = "";
 	panel.dataset.open = open ? "1" : "0";
 
+	// Live sync: while the drawer is open, refetch the transcript every 5s so
+	// newly typed messages and fresh cards appear in 全部/任务 without reopening.
+	if (open && liveTimer === null) {
+		liveTimer = setInterval(() => {
+			const anyApi = [...cards.values()].find((record) => record.api !== undefined)?.api;
+			if (anyApi === undefined || currentSessionId() === null) return;
+			scans.delete(currentSessionId());
+			scanSession(anyApi, currentSessionId());
+		}, 5000);
+	} else if (!open && liveTimer !== null) {
+		clearInterval(liveTimer);
+		liveTimer = null;
+	}
+
 	if (!open) {
 		// dsh-style panel-collapse toggle: a compact square icon button (like the
 		// host's own sidebar toggle) with a pending-count badge.
@@ -413,7 +428,7 @@ function renderPanel() {
 		if (anyApi !== undefined) scanSession(anyApi, sessionId);
 	}
 	const allCount = scanned !== undefined ? scanned.timeline.length : list.length;
-	for (const [key, text, badge] of [["pending", tRef("todo.tab.pending"), pending.length], ["all", tRef("todo.tab.all"), allCount]]) {
+	for (const [key, text, badge] of [["pending", tRef("todo.tab.tasks"), pending.length], ["all", tRef("todo.tab.all"), allCount]]) {
 		const button = document.createElement("button");
 		button.type = "button";
 		button.className = "dsha2ui-todo-tab";
@@ -442,7 +457,16 @@ function renderPanel() {
 		if (entry !== undefined) locateText(entry.text);
 	};
 
+	const sectionHeader = (text, count) => {
+		const head2 = document.createElement("div");
+		head2.className = "dsha2ui-todo-sec";
+		head2.textContent = `${text} · ${count}`;
+		return head2;
+	};
 	if (tab === "pending") {
+		const doneForms = forms.filter((record) => rowState(record).key === "done");
+		const skippedForms = forms.filter((record) => rowState(record).key === "skipped");
+		box.appendChild(sectionHeader(tRef("todo.sec.pending"), pending.length));
 		if (pending.length === 0) {
 			const empty = document.createElement("div");
 			empty.className = "dsha2ui-todo-empty";
@@ -496,6 +520,59 @@ function renderPanel() {
 			};
 			row.appendChild(skip);
 			box.appendChild(row);
+		}
+		box.appendChild(sectionHeader(tRef("todo.sec.done"), doneForms.length));
+		for (const record of doneForms) {
+			const state = rowState(record);
+			const row = document.createElement("div");
+			row.className = "dsha2ui-todo-row";
+			row.dataset.state = "done";
+			const main = document.createElement("button");
+			main.type = "button";
+			main.className = "dsha2ui-todo-mainbtn";
+			const topLine = document.createElement("span");
+			topLine.className = "dsha2ui-todo-topline";
+			const titleEl = document.createElement("span");
+			titleEl.className = "dsha2ui-todo-title";
+			titleEl.textContent = record.title;
+			const stateEl = document.createElement("span");
+			stateEl.className = "dsha2ui-todo-state";
+			stateEl.textContent = stateLabel(state);
+			topLine.append(titleEl, stateEl);
+			main.appendChild(topLine);
+			main.onclick = () => locateCard(record);
+			row.appendChild(main);
+			box.appendChild(row);
+		}
+		if (skippedForms.length > 0) {
+			box.appendChild(sectionHeader(tRef("todo.skipped"), skippedForms.length));
+			for (const record of skippedForms) {
+				const row = document.createElement("div");
+				row.className = "dsha2ui-todo-row";
+				row.dataset.state = "skipped";
+				const main = document.createElement("button");
+				main.type = "button";
+				main.className = "dsha2ui-todo-mainbtn";
+				const topLine = document.createElement("span");
+				topLine.className = "dsha2ui-todo-topline";
+				const titleEl = document.createElement("span");
+				titleEl.className = "dsha2ui-todo-title";
+				titleEl.textContent = record.title;
+				topLine.append(titleEl);
+				main.appendChild(topLine);
+				main.onclick = () => locateCard(record);
+				row.appendChild(main);
+				const restore = document.createElement("button");
+				restore.type = "button";
+				restore.className = "dsha2ui-todo-skip";
+				restore.textContent = tRef("todo.restore");
+				restore.onclick = (event) => {
+					event.stopPropagation();
+					setSkipped(record.sessionId, record.callId, false);
+					queueRender();
+				};
+				row.appendChild(restore);
+			}
 		}
 	} else {
 		// 全部：会话里每条用户消息都可定位；带表单的消息挂状态芯片。

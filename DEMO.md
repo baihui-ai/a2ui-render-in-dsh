@@ -113,9 +113,9 @@ Multiple matrices side by side, computed cell by cell: orange = cells being read
 
 ![Matrix animation](docs/demo-matrix.gif)
 
-### Form to-dos, drafts & cache-proof records
+### Session navigator: tasks, locating, drafts & cache-proof records
 
-A dsh-style panel toggle docks at the right edge whenever the session has form cards (badge = pending count, gentle ping). The drawer has two tabs: **Pending** lists unsubmitted forms with per-card fill counts (已填 2/6), a preview of what's already filled, its message time, and a "not needed" dismiss action (undoable); **All** lists every user message in full (wrapped, never truncated, timestamped) — click any row to scroll-and-flash to that point, with automatic "load earlier" retries for old messages; forms attach under their message with live status. Drafts auto-save as you type and survive reloads; submitted-state survives even a cleared cache, reconstructed from the session transcript.
+A dsh-style panel toggle docks at the right edge whenever the session has form cards (badge = pending count, gentle ping), opening the **session navigator** drawer. The **Tasks** tab groups *to-submit* forms (per-card fill counts like 已填 2/6, filled-content preview, full date+time, an undoable "not needed" dismiss) and *submitted* forms (✓ with time); the **All** tab lists every user message in full (wrapped, never truncated, dated) — click any row to scroll-and-flash to that point, with automatic "load earlier" retries for old history, forms attached under their message with live status, auto-refreshing every 5s while open. Drafts auto-save as you type and survive reloads; submitted-state survives even a cleared cache, reconstructed from the session transcript.
 
 ![Form to-dos](docs/demo-todo.gif)
 

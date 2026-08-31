@@ -61,7 +61,7 @@ Tracks: Backend, Data Analysis
 - 🎯 **Adaptive**: the model chooses text vs. card; verified reliable in both directions
 - 🪶 **Context-friendly**: skill-style catalog design, ~350 tokens always-visible for 44 components
 - ✅ **Form validation**: `required: true` on any input blocks submission and highlights what's missing
-- 📋 **Form to-dos**: a right-edge drawer tracks every form — pending/all tabs, per-card fill counts, filled-content previews, click-to-locate any user message (auto "load earlier"), user-dismissable rows; drafts survive reloads and submitted-state survives cache clears (rebuilt from the transcript)
+- 🧭 **Session navigator**: a right-edge drawer with Tasks (to-submit / submitted groups, fill counts, previews, dismissable) and All (every user message in full, click-to-locate with auto "load earlier", live-refreshing); drafts survive reloads and submitted-state survives cache clears (rebuilt from the transcript)
 - 🗜️ **Upload compression**: photos are downscaled client-side (≤1568px, JPEG) before flowing into the prompt
 - 💬 **Elegant answers**: plain-language submissions, not raw JSON strings; photos & signatures return as real images
 - 🔒 **Submit-once locking**: forms can't double-submit, records persist, a "refill" button reopens them; query buttons unaffected

@@ -158,7 +158,7 @@ function formatTime(at) {
 	if (typeof at !== "number") return "";
 	const d = new Date(at);
 	const pad = (n) => String(n).padStart(2, "0");
-	return `${d.getMonth() + 1}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** Close a truncated JSON prefix: balance strings/brackets outside strings. */

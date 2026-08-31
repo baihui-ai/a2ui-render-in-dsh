@@ -41,7 +41,7 @@ const T = (key) => ({
 	"card.title": "交互卡片", "card.building": "生成中…", "card.invalid": "解析失败",
 	"card.sending": "提交中…", "card.sent": "已提交", "card.error": "提交失败：",
 	"card.refill": "重新填写", "card.updated": "已更新卡片", "card.required": "请先完成：",
-	"todo.title": "表单待办", "todo.handle": "待办", "todo.pending": "待填", "todo.done": "已交", "todo.filled": "已填", "todo.alldone": "已全部提交",
+	"todo.title": "会话导航", "todo.handle": "待办", "todo.tab.tasks": "任务", "todo.sec.pending": "待提交任务", "todo.sec.done": "已提交任务", "todo.pending": "待填", "todo.done": "已交", "todo.filled": "已填", "todo.alldone": "已全部提交",
 	"todo.tab.pending": "待提交", "todo.tab.all": "全部", "todo.unfilled": "未填写", "todo.skip": "无需填写", "todo.restore": "恢复", "todo.skipped": "已标记无需填写", "todo.empty": "没有待提交的表单 🎉"
 }[key] ?? key);
 
@@ -440,7 +440,9 @@ const input = (el, value) => act(async () => {
 	await act(async () => { handle.click(); });
 	await new Promise((resolve) => setTimeout(resolve, 60));
 	let rows = document.querySelectorAll(".dsha2ui-todo-row");
-	assert(rows.length === 1 && rows[0].dataset.state === "partial" && rows[0].textContent.includes("填了一半"), "todo: 待提交 lists only pending forms with preview");
+	assert(document.querySelectorAll(".dsha2ui-todo-sec").length >= 2, "todo: tasks tab groups 待提交任务 + 已提交任务");
+	assert(rows.length === 2 && rows[0].dataset.state === "partial" && rows[0].textContent.includes("填了一半"), "todo: pending section shows fill preview");
+	assert(rows[1].dataset.state === "done", "todo: submitted section lists done forms");
 	await act(async () => { document.querySelectorAll(".dsha2ui-todo-tab")[1].click(); });
 	await new Promise((resolve) => setTimeout(resolve, 80));
 	const msgs = document.querySelectorAll(".dsha2ui-todo-msg");
@@ -452,7 +454,7 @@ const input = (el, value) => act(async () => {
 	assert(document.querySelector('.dsha2ui-todo-formrow[data-state="skipped"]') !== null, "todo: 无需填写 marks the form skipped");
 	await act(async () => { document.querySelectorAll(".dsha2ui-todo-tab")[0].click(); });
 	await new Promise((resolve) => setTimeout(resolve, 30));
-	assert(document.querySelectorAll(".dsha2ui-todo-row").length === 0 && document.querySelector(".dsha2ui-todo-empty") !== null, "todo: skipped forms leave 待提交");
+	assert(document.querySelector('.dsha2ui-todo-row[data-state="partial"]') === null && document.querySelector(".dsha2ui-todo-empty") !== null, "todo: skipped forms leave 待提交任务");
 	await act(async () => { document.querySelectorAll(".dsha2ui-todo-tab")[1].click(); });
 	await new Promise((resolve) => setTimeout(resolve, 60));
 	await act(async () => { document.querySelector('.dsha2ui-todo-formrow[data-state="skipped"] .dsha2ui-todo-skip').click(); });

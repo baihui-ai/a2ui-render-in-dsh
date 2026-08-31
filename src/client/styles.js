@@ -285,17 +285,19 @@ export const CSS = `
 .dsha2ui-todo-tab[data-active="1"]{color:var(--dsw-alias-primary,#1668dc);background:var(--dsw-alias-primary-bg,rgba(22,104,220,.08))}
 .dsha2ui-todo-chip{font-size:10.5px;font-weight:700;min-width:16px;height:16px;padding:0 4px;border-radius:99px;display:inline-flex;align-items:center;justify-content:center;background:var(--dsw-alias-bg-l2,rgba(128,128,128,.14));font-variant-numeric:tabular-nums}
 .dsha2ui-todo-tab[data-active="1"] .dsha2ui-todo-chip{background:var(--dsw-alias-primary,#1668dc);color:#fff}
-.dsha2ui-todo-list{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:4px}
+.dsha2ui-todo-list{flex:1;min-height:0;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:4px}
+.dsha2ui-todo-sec{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--dsw-alias-label-tertiary,#8a8a8a);padding:10px 10px 4px}
 .dsha2ui-todo-empty{padding:26px 10px;text-align:center;font-size:12.5px;color:var(--dsw-alias-label-tertiary,#8a8a8a)}
-.dsha2ui-todo-row{display:flex;align-items:stretch;gap:0;border-radius:9px;overflow:hidden;border-left:3px solid transparent;background:transparent}
+.dsha2ui-todo-row{display:flex;align-items:flex-start;gap:0;border-radius:9px;border-left:3px solid transparent;background:transparent;flex:none}
 .dsha2ui-todo-row[data-state=empty]{border-left-color:var(--dsw-alias-primary,#1668dc)}
 .dsha2ui-todo-row[data-state=partial]{border-left-color:#d48806}
 .dsha2ui-todo-row[data-state=done]{border-left-color:#3c8618}
 .dsha2ui-todo-row[data-state=skipped]{border-left-color:var(--dsw-alias-border-l1,rgba(128,128,128,.35))}
 .dsha2ui-todo-row[data-state=browse]{border-left-color:transparent}
 .dsha2ui-todo-row:hover{background:var(--dsw-alias-bg-l2,rgba(128,128,128,.08))}
-.dsha2ui-todo-mainbtn{appearance:none;border:none;background:transparent;flex:1;display:flex;flex-direction:column;gap:2px;padding:9px 4px 9px 10px;cursor:pointer;text-align:left;font-family:inherit;overflow:hidden}
-.dsha2ui-todo-topline{display:flex;align-items:center;gap:8px;width:100%}
+.dsha2ui-todo-mainbtn{appearance:none;border:none;background:transparent;flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;padding:9px 4px 9px 10px;cursor:pointer;text-align:left;font-family:inherit}
+.dsha2ui-todo-topline{display:flex;align-items:flex-start;gap:8px;width:100%}
+.dsha2ui-todo-state{padding-top:1.5px}
 .dsha2ui-todo-title{flex:1;white-space:pre-wrap;word-break:break-word;font-size:12.5px;line-height:1.55;color:var(--dsw-alias-label-primary,#333)}
 .dsha2ui-todo-row[data-state=skipped] .dsha2ui-todo-title,.dsha2ui-todo-row[data-state=browse] .dsha2ui-todo-title{color:var(--dsw-alias-label-tertiary,#8a8a8a)}
 .dsha2ui-todo-state{color:var(--dsw-alias-label-tertiary,#8a8a8a);flex:none;font-size:11.5px;font-variant-numeric:tabular-nums}
@@ -305,6 +307,7 @@ export const CSS = `
 .dsha2ui-todo-msg{white-space:pre-wrap;word-break:break-word;overflow:visible;text-overflow:clip;line-height:1.55}
 .dsha2ui-todo-formrow{margin-left:14px}
 .dsha2ui-todo-formrow .dsha2ui-todo-title{font-size:12px}
+.dsha2ui-todo-row>.dsha2ui-todo-skip{padding-top:11px}
 .dsha2ui-todo-skip{appearance:none;border:none;background:transparent;cursor:pointer;font-size:10.5px;color:var(--dsw-alias-label-tertiary,#9a9a9a);padding:0 10px;opacity:0;transition:opacity .12s;white-space:nowrap;font-family:inherit}
 .dsha2ui-todo-row:hover .dsha2ui-todo-skip{opacity:1}
 .dsha2ui-todo-skip:hover{color:var(--dsw-alias-primary,#1668dc);text-decoration:underline}
