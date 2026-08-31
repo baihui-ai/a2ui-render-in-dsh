@@ -197,6 +197,10 @@ const input = (el, value) => act(async () => {
 	assert(money.host.querySelector(".katex") === null && money.host.textContent.includes("$30 和 $45"), "rich: dollar amounts stay literal");
 	const math = await mount(React.createElement(Text, { text: "答案是 $x^2 + C$" }));
 	assert(math.host.querySelector(".katex") !== null, "rich: LaTeX still renders");
+	const inlineCode = await mount(React.createElement(Text, { text: "调用 `future.get()` 会阻塞" }));
+	assert(inlineCode.host.querySelector(".dsha2ui-inline-code")?.textContent === "future.get()", "rich: inline backtick code renders");
+	const fenced = await mount(React.createElement(Text, { text: "读下面的代码：\n```java\npublic class A {}\n```" }));
+	assert(fenced.host.querySelector("pre code")?.textContent.includes("public class A"), "text: fenced code upgrades to a formatted block");
 }
 
 // ---------- 8. Calendar range ----------

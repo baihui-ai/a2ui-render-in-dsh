@@ -13,6 +13,7 @@ import { ZoomableFigure } from "./zoomable.jsx";
 import { compileScopedExpression } from "./expr.js";
 import { rich } from "./richtext.jsx";
 import { Steps } from "./components-viz.jsx";
+import { Markdown } from "./markdown.jsx";
 
 export const CardMirrorContext = createContext(null);
 
@@ -139,6 +140,9 @@ const TEXT_VARIANTS = new Set(["h1", "h2", "h3", "body", "strong", "caption"]);
 
 export function Text({ text, variant }) {
 	const kind = TEXT_VARIANTS.has(variant) ? variant : "body";
+	// Models sometimes inline fenced code into a stem Text — render it through
+	// Markdown so the code comes out as a formatted block, not a squashed line.
+	if (typeof text === "string" && text.includes("```")) return <Markdown text={text} />;
 	const content = rich(text);
 	if (kind === "h1") return <h1 className="dsha2ui-text-h1">{content}</h1>;
 	if (kind === "h2") return <h2 className="dsha2ui-text-h2">{content}</h2>;

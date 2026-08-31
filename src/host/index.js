@@ -39,7 +39,7 @@ Content (Chart/Mermaid/Image auto-get fullscreen zoom; don't oversize):
 - Stat {label, value, unit?, trend?, hint?} — KPI tile ("+12%" green / "-3%" red); several in a Grid
 - Steps {items: [{title, description?, status?: "done"|"current"|"pending"}]} — linear procedures; Mermaid flowchart only when it BRANCHES
 - Progress {value, max?, label?} · Timeline {items: [{time?, title, description?}]} (past events; Steps = to-dos)
-- CodeBlock {code, language?, title?} — always for code snippets
+- CodeBlock {code, language?, title?} — ALWAYS for code, including quiz/form stems: compose Text(题干) + CodeBlock(代码) + inputs; NEVER inline code in a Text prop
 - Video {url, poster?…} · Audio {url, title?} · Flashcard {front, back} · Countdown {to?: "2026-09-01 10:00", seconds?, label?}
 - Map {data: [{name: "广东", value: 100}…], title?, unit?, height?} — China province choropleth (regional sales/distribution); province names in Chinese
 - ImageCompare {before, after} — drag-divider image comparison (before/after, A/B)
@@ -72,7 +72,7 @@ Bindings are live: inputs write bind paths, every {"path"} display binding updat
 Seed every bound path in dataModel.
 
 ## Scenario map
-Input collection -> form (TextField/kind date|time|number, MultipleChoice 2-7 options, Select for long lists, CheckBox, Rate). Decisions -> Grid Cards + Table; lone confirm Button gets submit:true. Data -> Chart (trend/rank/share) + Stat tiles + Table; regional -> Map. Learning -> MultipleChoice quizzes (options may be formulas), Math, Chart functions (+Slider), Anim, mindmap, Flashcard, CodeBlock. Procedures -> Steps (Timeline for history, Progress for completion, gantt/Table for schedules). Entertainment -> Grid recommendation cards, Rate, polls via MultipleChoice.
+Input collection -> form (TextField/kind date|time|number, MultipleChoice 2-7 options, Select for long lists, CheckBox, Rate). Decisions -> Grid Cards + Table; lone confirm Button gets submit:true. Data -> Chart (trend/rank/share) + Stat tiles + Table; regional -> Map. Learning -> MultipleChoice quizzes (options may be formulas), Math, Chart functions (+Slider), Anim, mindmap, Flashcard; 读代码题 = Text(题干) + CodeBlock(代码) + TextField. Procedures -> Steps (Timeline for history, Progress for completion, gantt/Table for schedules). Entertainment -> Grid recommendation cards, Rate, polls via MultipleChoice.
 
 ## Inline math
 Any text prop (Text, option labels/descriptions, Table cells, Steps, Flashcard, Anim notes) embeds formulas with $...$, e.g. option {"label": "$\\\\frac{x^2}{2}+C$"}. Math component = display equations; $...$ = math inside sentences/choices. In math quizzes, option labels with fractions/roots/integrals/exponents SHOULD be $...$ formulas (e.g. {"label": "$3x^2$"}), not Unicode approximations.

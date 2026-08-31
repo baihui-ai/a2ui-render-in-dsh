@@ -264,6 +264,7 @@ export const CSS = `
 .dsha2ui-imgcmp .after img{height:100%}
 .dsha2ui-imgcmp-bar{position:absolute;top:0;bottom:0;width:3px;background:#fff;box-shadow:0 0 6px rgba(0,0,0,.4);cursor:ew-resize}
 .dsha2ui-imgcmp-bar:before{content:"⇔";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;color:#333;border-radius:999px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px}
+.dsha2ui-inline-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em;background:var(--dsw-alias-bg-l2,rgba(128,128,128,.13));border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.14));padding:.06em .35em;border-radius:5px}
 [data-invalid]{outline:1.5px solid #d4380d;outline-offset:2px;border-radius:10px}
 .dsha2ui-rank-grip{cursor:grab;color:var(--dsw-alias-label-tertiary,#999);font-size:12px;user-select:none}
 .dsha2ui-rank-item[data-dragover]{outline:1.5px dashed var(--dsw-alias-primary,#1668dc);outline-offset:-1.5px}
