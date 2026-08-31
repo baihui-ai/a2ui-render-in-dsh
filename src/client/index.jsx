@@ -15,7 +15,12 @@ const zh = {
 	"card.error": "提交失败：",
 	"card.refill": "重新填写",
 	"card.updated": "已更新卡片",
-	"card.required": "请先完成："
+	"card.required": "请先完成：",
+	"todo.title": "表单待办",
+	"todo.pending": "待填",
+	"todo.done": "已交",
+	"todo.filled": "已填",
+	"todo.alldone": "已全部提交"
 };
 
 const en = {
@@ -27,7 +32,12 @@ const en = {
 	"card.error": "Submit failed:",
 	"card.refill": "Refill",
 	"card.updated": "Card updated",
-	"card.required": "Please complete: "
+	"card.required": "Please complete: ",
+	"todo.title": "Form to-dos",
+	"todo.pending": "To fill",
+	"todo.done": "Submitted",
+	"todo.filled": "Filled",
+	"todo.alldone": "All submitted"
 };
 
 export const name = "a2ui-client";

@@ -7,6 +7,7 @@ import { CATALOG, CardMirrorContext } from "./components.jsx";
 import { VIZ_CATALOG } from "./components-viz.jsx";
 import { Markdown } from "./markdown.jsx";
 import { rich } from "./richtext.jsx";
+import { computeFields, scanSession, invalidateScan, registerTodoCard, updateTodoStatus, pingTodo } from "./todo.js";
 
 const FULL_CATALOG = { ...CATALOG, ...VIZ_CATALOG, Markdown };
 
@@ -38,6 +39,7 @@ function createMirror() {
 				current = current[key];
 			}
 			current[parts[parts.length - 1]] = value;
+			store.draftHook?.();
 		},
 		setDisplay(path, entry) {
 			store.displays.set(path.replace(/^\//, ""), entry);
@@ -140,6 +142,16 @@ function pruneStorage() {
 		keep.sort((a, b) => b.at - a.at);
 		for (const entry of keep.slice(STORE_MAX)) localStorage.removeItem(entry.key);
 	} catch { /* storage unavailable */ }
+}
+
+function readDraft(draftKey) {
+	try {
+		const raw = localStorage.getItem(draftKey);
+		if (raw === null) return null;
+		const draft = JSON.parse(raw);
+		if (draft !== null && typeof draft === "object" && draft.data !== null && typeof draft.data === "object") return draft;
+	} catch { /* storage unavailable */ }
+	return null;
 }
 
 function formatTime(at) {
@@ -322,9 +334,11 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 	const mirrorRef = useRef(null);
 	if (mirrorRef.current === null) mirrorRef.current = createMirror();
 	mirrorRef.current.animStorageKey = `dsh-a2ui:animplayed:${sessionId}:${callId}`;
+	const draftKey = `dsh-a2ui:draft:${sessionId}:${callId}`;
 
 	// Restore a recorded submission synchronously so the inputs mount with the
-	// submitted values and (in "once" mode) already locked.
+	// submitted values and (in "once" mode) already locked. With no record,
+	// an unsubmitted DRAFT (auto-saved as the user types) restores the values.
 	const restoreRef = useRef(null); // null = not checked yet; false = none; object = record
 	if (restoreRef.current === null && args !== null) {
 		const record = readSubmissionRecord(storageKey);
@@ -332,9 +346,36 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 		if (record !== null) {
 			mirrorRef.current.seed(record.data !== null && typeof record.data === "object" ? record.data : args.dataModel);
 			if (record.lock === true) mirrorRef.current.lock();
+		} else {
+			const draft = readDraft(draftKey);
+			if (draft !== null) {
+				mirrorRef.current.seed(draft.data);
+				for (const [path, display] of Array.isArray(draft.displays) ? draft.displays : []) mirrorRef.current.displays.set(path, display);
+			}
 		}
 	}
 	if (args !== null) mirrorRef.current.seed(args.dataModel);
+
+	// Auto-save a draft (debounced) on every input write, so a page reload
+	// before submitting keeps what was already filled in.
+	const draftTimer = useRef(null);
+	useEffect(() => {
+		if (!hasInputs) return undefined;
+		mirrorRef.current.draftHook = () => {
+			pingTodo();
+			clearTimeout(draftTimer.current);
+			draftTimer.current = setTimeout(() => {
+				try {
+					localStorage.setItem(draftKey, JSON.stringify({ at: Date.now(), data: mirrorRef.current.data, displays: [...mirrorRef.current.displays] }));
+				} catch { /* storage unavailable */ }
+			}, 400);
+		};
+		return () => {
+			clearTimeout(draftTimer.current);
+			mirrorRef.current.draftHook = undefined;
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [hasInputs, draftKey]);
 
 	const surfaceId = callId;
 	const updatesKey = `dsh-a2ui:updates:${sessionId}:${callId}`;
@@ -394,6 +435,41 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 		}
 	}, [ready]);
 
+	// Cache-clear recovery: with no local record, reconstruct submitted-state
+	// from the session transcript (render calls + submission messages).
+	useEffect(() => {
+		if (!ready || !hasInputs || restoreRef.current !== false) return;
+		let cancelled = false;
+		scanSession(api, sessionId).then((submitted) => {
+			const hit = submitted.get(callId);
+			if (cancelled || hit === undefined) return;
+			if (submitMode === "once") mirrorRef.current.lock();
+			writeSubmissionRecord(storageKey, { text: hit.text, at: hit.at ?? Date.now(), lock: submitMode === "once" });
+			setSendState({ kind: "sent", name: hit.text.split("\n")[0] + (hit.text.includes("\n") ? " …" : ""), at: hit.at });
+			updateTodoStatus(callId, { kind: "done", at: hit.at });
+		});
+		return () => { cancelled = true; };
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [ready]);
+
+	// Register this form card on the floating 表单待办 panel.
+	const wrapRef = useRef(null);
+	useEffect(() => {
+		if (!ready || !hasInputs) return undefined;
+		const record = restoreRef.current;
+		return registerTodoCard({
+			sessionId,
+			callId,
+			title: typeof args.title === "string" && args.title !== "" ? args.title : t("card.title"),
+			fields: computeFields(args.components),
+			mirror: mirrorRef.current,
+			getNode: () => wrapRef.current,
+			t,
+			status: record !== false && record !== null ? { kind: "done", at: record.at } : { kind: "pending" }
+		});
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [ready, hasInputs, callId]);
+
 	const [resubmitting, setResubmitting] = useState(false);
 	const handleAction = useCallback(async (payload) => {
 		const meta = payload.context !== null && typeof payload.context === "object" ? payload.context : {};
@@ -436,7 +512,12 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 			});
 			if (!result.ok) throw new Error(result.error?.message ?? result.error?.code ?? "prompt rejected");
 			const at = Date.now();
-			if (!isSuggestion) writeSubmissionRecord(storageKey, { text, at, data: mirrorRef.current.data, lock: shouldLock });
+			if (!isSuggestion) {
+				writeSubmissionRecord(storageKey, { text, at, data: mirrorRef.current.data, lock: shouldLock });
+				try { localStorage.removeItem(draftKey); } catch { /* storage unavailable */ }
+				invalidateScan(sessionId);
+				updateTodoStatus(callId, { kind: "done", at });
+			}
 			if (shouldLock) mirrorRef.current.lock();
 			setResubmitting(false);
 			if (isSuggestion) setSendState({ kind: "idle" });
@@ -446,7 +527,7 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 		} finally {
 			mirrorRef.current.setBusy(false);
 		}
-	}, [api, sessionId, storageKey, submitMode, hasInputs, resubmitting, t]);
+	}, [api, sessionId, storageKey, draftKey, callId, submitMode, hasInputs, resubmitting, t]);
 
 	if (args === null) {
 		return (
@@ -458,7 +539,7 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 	}
 
 	return (
-		<div className="dsha2ui-wrap" data-tool="a2ui_render">
+		<div className="dsha2ui-wrap" data-tool="a2ui_render" ref={wrapRef}>
 			<div className="dsha2ui-head">
 				<span aria-hidden>▤</span>
 				<span className="dsha2ui-head-title">{typeof args.title === "string" && args.title !== "" ? args.title : t("card.title")}</span>
@@ -481,6 +562,7 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 							mirrorRef.current.unlock();
 							setResubmitting(true);
 							setSendState({ kind: "idle" });
+							updateTodoStatus(callId, { kind: "pending" });
 							try { localStorage.removeItem(storageKey); } catch { /* storage unavailable */ }
 						}}>{t("card.refill")}</button>
 					) : null}

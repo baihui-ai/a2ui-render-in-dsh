@@ -40,7 +40,8 @@ function assert(cond, name) {
 const T = (key) => ({
 	"card.title": "交互卡片", "card.building": "生成中…", "card.invalid": "解析失败",
 	"card.sending": "提交中…", "card.sent": "已提交", "card.error": "提交失败：",
-	"card.refill": "重新填写", "card.updated": "已更新卡片", "card.required": "请先完成："
+	"card.refill": "重新填写", "card.updated": "已更新卡片", "card.required": "请先完成：",
+	"todo.title": "表单待办", "todo.pending": "待填", "todo.done": "已交", "todo.filled": "已填", "todo.alldone": "已全部提交"
 }[key] ?? key);
 
 function mkApi() {
@@ -351,6 +352,93 @@ const input = (el, value) => act(async () => {
 	await first.unmount();
 	const second = await renderCard(args, { callId: "call_anim" });
 	assert(second.host.textContent.includes("完成") && second.host.textContent.includes("2/2"), "anim: remount does not replay (latched)");
+}
+
+// ---------- 16. todo: field counting + transcript matching (pure) ----------
+{
+	const { computeFields, matchTranscript } = await import("../src/client/todo.js");
+	const comps = [
+		{ id: "root", component: "Column", children: [] },
+		{ id: "q1", component: "MultipleChoice", bind: "a1", options: [] },
+		{ id: "q2", component: "MultipleChoice", bind: "a2", options: [] },
+		{ id: "q3", component: "TextField", bind: "a3" },
+		{ id: "note", component: "Text", text: "题干" }
+	];
+	assert(computeFields(comps).length === 3, "todo: counts answer fields, not display components");
+	const events = [
+		{ type: "tool/call", data: { callId: "c1", name: "a2ui_render", arguments: JSON.stringify({ components: [{ id: "root", component: "Column" }, { id: "f", component: "TextField", bind: "x" }, { id: "b", component: "Button", label: "提交问卷" }] }) } },
+		{ type: "user/message", time: 111, data: { source: { kind: "user" }, content: [{ type: "text", text: "随便聊聊" }] } },
+		{ type: "user/message", time: 222, data: { source: { kind: "user" }, content: [{ type: "text", text: "提交问卷：很满意" }] } }
+	];
+	const matched = matchTranscript(events);
+	assert(matched.get("c1")?.text === "提交问卷：很满意" && matched.get("c1").at === 222, "todo: transcript matching claims the right card");
+}
+
+// ---------- 17. draft: typed content survives remount without submitting ----------
+{
+	const args = {
+		components: [
+			{ id: "root", component: "Column", children: ["f", "btn"] },
+			{ id: "f", component: "TextField", label: "答案", bind: "ans" },
+			{ id: "btn", component: "Button", label: "交卷", action: { event: { name: "go" } } }
+		], dataModel: { ans: "" }
+	};
+	const first = await renderCard(args, { callId: "call_draft", sessionId: "s-draft" });
+	await input(first.host.querySelector(".dsha2ui-input"), "写了一半");
+	await new Promise((resolve) => setTimeout(resolve, 550)); // debounce flush
+	await first.unmount();
+	const second = await renderCard(args, { callId: "call_draft", sessionId: "s-draft" });
+	assert(second.host.querySelector(".dsha2ui-input").value === "写了一半" && !second.host.querySelector(".dsha2ui-input").disabled, "draft: reload restores typed content unlocked");
+}
+
+// ---------- 18. todo drawer: handle count, rows, preview, done state ----------
+{
+	const api = mkApi();
+	const form = (n) => ({
+		title: `表单${n}`, components: [
+			{ id: "root", component: "Column", children: ["f", "btn"] },
+			{ id: "f", component: "TextField", label: "备注", bind: "memo" },
+			{ id: "btn", component: "Button", label: `提交${n}`, action: { event: { name: "go" } } }
+		], dataModel: { memo: "" }
+	});
+	const one = await renderCard(form(1), { callId: "call_todo1", sessionId: "s-todo", api });
+	const two = await renderCard(form(2), { callId: "call_todo2", sessionId: "s-todo", api });
+	await input(one.host.querySelector(".dsha2ui-input"), "答案A");
+	await click(one.host.querySelector(".dsha2ui-btn"));
+	await input(two.host.querySelector(".dsha2ui-input"), "填了一半");
+	await new Promise((resolve) => setTimeout(resolve, 30));
+	const drawerHost = document.getElementById("dsha2ui-todo");
+	assert(drawerHost !== null, "todo: drawer appears once form cards exist");
+	const handle = drawerHost.querySelector(".dsha2ui-todo-handle");
+	assert(handle !== null && handle.dataset.state === "pending" && handle.textContent.includes("1"), "todo: collapsed handle counts pending forms");
+	await act(async () => { handle.click(); });
+	await new Promise((resolve) => setTimeout(resolve, 30));
+	const rows = document.querySelectorAll(".dsha2ui-todo-row");
+	assert(rows.length === 2, "todo: drawer lists this session's form cards");
+	assert(document.querySelector('.dsha2ui-todo-row[data-done="1"]') !== null && document.querySelector('.dsha2ui-todo-row[data-done="0"]') !== null, "todo: submitted and pending rows distinguished");
+	assert([...rows].some((row) => /已填 \d+\/\d+/.test(row.textContent)), "todo: pending rows show filled/total counts");
+	assert(document.querySelector(".dsha2ui-todo-preview")?.textContent.includes("填了一半"), "todo: pending rows preview the filled content");
+}
+
+// ---------- 19. cache-clear reconstruction from transcript ----------
+{
+	const events = [
+		{ type: "tool/call", data: { callId: "call_scan", name: "a2ui_render", arguments: JSON.stringify({ components: [{ id: "root", component: "Column", children: ["f", "b"] }, { id: "f", component: "TextField", bind: "x" }, { id: "b", component: "Button", label: "提交调研" }] }) } },
+		{ type: "user/message", time: 333, data: { source: { kind: "user" }, content: [{ type: "text", text: "提交调研：已完成" }] } }
+	];
+	const api = mkApi();
+	api.sessions.history = async () => ({ result: { value: { events: events.map((event) => ({ event })) } } });
+	const args = {
+		components: [
+			{ id: "root", component: "Column", children: ["f", "b"] },
+			{ id: "f", component: "TextField", bind: "x" },
+			{ id: "b", component: "Button", label: "提交调研", action: { event: { name: "go" } } }
+		], dataModel: { x: "" }
+	};
+	const { host } = await renderCard(args, { callId: "call_scan", sessionId: "s-fresh-scan", api });
+	await new Promise((resolve) => setTimeout(resolve, 60));
+	await act(async () => {});
+	assert(host.textContent.includes("提交调研") && host.querySelector(".dsha2ui-input").disabled, "reconstruction: cleared cache re-locks from transcript");
 }
 
 console.log(`\nALL PASS (${passed} assertions)`);
