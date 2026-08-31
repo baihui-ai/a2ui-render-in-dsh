@@ -436,30 +436,32 @@ const input = (el, value) => act(async () => {
 	const drawerHost = document.getElementById("dsha2ui-todo");
 	assert(drawerHost !== null, "todo: drawer appears once form cards exist");
 	const handle = drawerHost.querySelector(".dsha2ui-todo-handle");
-	assert(handle !== null && handle.dataset.state === "pending" && handle.querySelector(".dsha2ui-todo-count").textContent === "1", "todo: handle badge counts pending forms");
+	assert(handle !== null && handle.dataset.state === "pending" && Number(handle.querySelector(".dsha2ui-todo-count").textContent) >= 1, "todo: handle badge counts pending forms");
 	await act(async () => { handle.click(); });
 	await new Promise((resolve) => setTimeout(resolve, 60));
-	let rows = document.querySelectorAll(".dsha2ui-todo-row");
+
 	assert(document.querySelectorAll(".dsha2ui-todo-sec").length >= 2, "todo: tasks tab groups 待提交任务 + 已提交任务");
-	assert(rows.length === 2 && rows[0].dataset.state === "partial" && rows[0].textContent.includes("填了一半"), "todo: pending section shows fill preview");
-	assert(rows[1].dataset.state === "done", "todo: submitted section lists done forms");
+	const rowByText = (text, state) => [...document.querySelectorAll(`.dsha2ui-todo-row[data-state="${state}"]`)].find((row) => row.textContent.includes(text));
+	assert(rowByText("表单2", "partial")?.textContent.includes("填了一半"), "todo: pending section shows fill preview");
+	assert(rowByText("表单1", "done") !== undefined, "todo: submitted section lists done forms");
 	await act(async () => { document.querySelectorAll(".dsha2ui-todo-tab")[1].click(); });
 	await new Promise((resolve) => setTimeout(resolve, 80));
-	const msgs = document.querySelectorAll(".dsha2ui-todo-msg");
-	assert(msgs.length === 3, "todo: 全部 lists every user message");
-	assert(msgs[0].textContent === "第一个问题：帮我建一张表单\n背景是周报收集", "todo: user messages shown in full, unabridged");
+	const msgs = [...document.querySelectorAll(".dsha2ui-todo-msg")];
+	assert(msgs.length >= 3, "todo: 全部 lists every user message (all mounted sessions)");
+	assert(msgs.some((el) => el.textContent === "第一个问题：帮我建一张表单\n背景是周报收集"), "todo: user messages shown in full, unabridged");
 	assert(document.querySelector('.dsha2ui-todo-formrow[data-state="done"]') !== null && document.querySelector('.dsha2ui-todo-formrow[data-state="partial"]') !== null, "todo: forms attach under their message with status");
-	await act(async () => { document.querySelector('.dsha2ui-todo-formrow[data-state="partial"] .dsha2ui-todo-skip').click(); });
+	const formRowByText = (text, state) => [...document.querySelectorAll(`.dsha2ui-todo-formrow[data-state="${state}"]`)].find((row) => row.textContent.includes(text));
+	await act(async () => { formRowByText("表单2", "partial").querySelector(".dsha2ui-todo-skip").click(); });
 	await new Promise((resolve) => setTimeout(resolve, 30));
-	assert(document.querySelector('.dsha2ui-todo-formrow[data-state="skipped"]') !== null, "todo: 无需填写 marks the form skipped");
+	assert(formRowByText("表单2", "skipped") !== undefined, "todo: 无需填写 marks the form skipped");
 	await act(async () => { document.querySelectorAll(".dsha2ui-todo-tab")[0].click(); });
 	await new Promise((resolve) => setTimeout(resolve, 30));
-	assert(document.querySelector('.dsha2ui-todo-row[data-state="partial"]') === null && document.querySelector(".dsha2ui-todo-empty") !== null, "todo: skipped forms leave 待提交任务");
+	assert(rowByText("表单2", "partial") === undefined, "todo: skipped forms leave 待提交任务");
 	await act(async () => { document.querySelectorAll(".dsha2ui-todo-tab")[1].click(); });
 	await new Promise((resolve) => setTimeout(resolve, 60));
-	await act(async () => { document.querySelector('.dsha2ui-todo-formrow[data-state="skipped"] .dsha2ui-todo-skip').click(); });
+	await act(async () => { formRowByText("表单2", "skipped").querySelector(".dsha2ui-todo-skip").click(); });
 	await new Promise((resolve) => setTimeout(resolve, 30));
-	assert(document.querySelector('.dsha2ui-todo-formrow[data-state="partial"]') !== null, "todo: 恢复 brings it back");
+	assert(formRowByText("表单2", "partial") !== undefined, "todo: 恢复 brings it back");
 }
 
 // ---------- 19. cache-clear reconstruction from transcript ----------

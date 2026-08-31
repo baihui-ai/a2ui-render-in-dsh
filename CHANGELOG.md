@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-08-31)
 
 **Adaptive triggering, purpose-anchored.** The render contract now judges every reply against UI's four purposes — act 操作 / browse 浏览 / understand 理解 / feedback 反馈 — verified with keyword-free prompts (grounded in HCI research: Norman's gulfs, the keyhole effect, external cognition). Data-viewing asks always chart; multi-item recommendations render item cards; multi-step work opens a Progress card advanced via `a2ui_update`. Cards always pair with a prose takeaway. Resident tool description trimmed ~24% while adding all of the above.
 

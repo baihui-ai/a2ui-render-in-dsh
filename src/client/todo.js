@@ -219,12 +219,11 @@ export function pingTodo() {
 	queueRender();
 }
 
-function currentSessionId() {
-	let latest = null;
-	for (const record of cards.values()) {
-		if (latest === null || record.order > latest.order) latest = record;
-	}
-	return latest?.sessionId ?? null;
+/** Every session with mounted cards — the main thread and any side threads. */
+function mountedSessionIds() {
+	const ids = new Set();
+	for (const record of cards.values()) ids.add(record.sessionId);
+	return [...ids];
 }
 
 function progressOf(record) {
@@ -302,13 +301,8 @@ async function locateText(text) {
 	}
 }
 
-function collapsedKey(sessionId) {
-	return `dsh-a2ui:todo-collapsed:${sessionId}`;
-}
-
-function tabKey(sessionId) {
-	return `dsh-a2ui:todo-tab:${sessionId}`;
-}
+const COLLAPSED_KEY = "dsh-a2ui:todo-collapsed";
+const TAB_KEY = "dsh-a2ui:todo-tab";
 
 /** Resolve a row's display state: done > skipped > partial > empty > browse. */
 function rowState(record) {
@@ -336,10 +330,10 @@ function stateLabel(state) {
 
 function renderPanel() {
 	if (typeof document === "undefined") return;
-	const sessionId = currentSessionId();
-	const list = [...cards.values()].filter((record) => record.sessionId === sessionId).sort((a, b) => a.order - b.order);
+	const sessions = mountedSessionIds();
+	const list = [...cards.values()].sort((a, b) => a.order - b.order);
 	const forms = list.filter((record) => record.kind === "form");
-	if (sessionId === null || forms.length === 0) {
+	if (sessions.length === 0 || forms.length === 0) {
 		panel?.remove();
 		panel = null;
 		return;
@@ -353,20 +347,23 @@ function renderPanel() {
 	let open = false;
 	let tab = "pending";
 	try {
-		open = sessionStorage.getItem(collapsedKey(sessionId)) === "open";
-		tab = sessionStorage.getItem(tabKey(sessionId)) === "all" ? "all" : "pending";
+		open = sessionStorage.getItem(COLLAPSED_KEY) === "open";
+		tab = sessionStorage.getItem(TAB_KEY) === "all" ? "all" : "pending";
 	} catch { /* defaults */ }
-	const setOpen = (next) => {
-		try { sessionStorage.setItem(collapsedKey(sessionId), next ? "open" : "closed"); } catch { /* ignore */ }
-		if (next) {
-			scans.delete(sessionId); // refetch so 全部 sees the latest messages
-			const anyApi = list.find((record) => record.api !== undefined)?.api;
-			if (anyApi !== undefined) scanSession(anyApi, sessionId);
+	const refreshAll = () => {
+		for (const sid of sessions) {
+			scans.delete(sid);
+			const anyApi = list.find((record) => record.sessionId === sid && record.api !== undefined)?.api;
+			if (anyApi !== undefined) scanSession(anyApi, sid);
 		}
+	};
+	const setOpen = (next) => {
+		try { sessionStorage.setItem(COLLAPSED_KEY, next ? "open" : "closed"); } catch { /* ignore */ }
+		if (next) refreshAll(); // refetch so 全部 sees the latest messages
 		queueRender();
 	};
 	const setTab = (next) => {
-		try { sessionStorage.setItem(tabKey(sessionId), next); } catch { /* ignore */ }
+		try { sessionStorage.setItem(TAB_KEY, next); } catch { /* ignore */ }
 		queueRender();
 	};
 
@@ -377,10 +374,12 @@ function renderPanel() {
 	// newly typed messages and fresh cards appear in 全部/任务 without reopening.
 	if (open && liveTimer === null) {
 		liveTimer = setInterval(() => {
-			const anyApi = [...cards.values()].find((record) => record.api !== undefined)?.api;
-			if (anyApi === undefined || currentSessionId() === null) return;
-			scans.delete(currentSessionId());
-			scanSession(anyApi, currentSessionId());
+			for (const sid of mountedSessionIds()) {
+				const anyApi = [...cards.values()].find((record) => record.sessionId === sid && record.api !== undefined)?.api;
+				if (anyApi === undefined) continue;
+				scans.delete(sid);
+				scanSession(anyApi, sid);
+			}
 		}, 5000);
 	} else if (!open && liveTimer !== null) {
 		clearInterval(liveTimer);
@@ -422,10 +421,24 @@ function renderPanel() {
 
 	const tabs = document.createElement("div");
 	tabs.className = "dsha2ui-todo-tabs";
-	const scanned = timelines.get(sessionId);
-	if (scanned === undefined) {
-		const anyApi = list.find((record) => record.api !== undefined)?.api;
-		if (anyApi !== undefined) scanSession(anyApi, sessionId);
+	let scanned;
+	{
+		const merged = [];
+		const submittedAll = new Map();
+		let missing = false;
+		for (const sid of sessions) {
+			const one = timelines.get(sid);
+			if (one === undefined) {
+				missing = true;
+				const anyApi = list.find((record) => record.sessionId === sid && record.api !== undefined)?.api;
+				if (anyApi !== undefined) scanSession(anyApi, sid);
+				continue;
+			}
+			for (const entry of one.timeline) merged.push({ ...entry, sessionId: sid });
+			for (const [key, value] of one.submitted) submittedAll.set(key, value);
+		}
+		merged.sort((a, b) => (a.time ?? 0) - (b.time ?? 0));
+		scanned = missing && merged.length === 0 ? undefined : { timeline: merged, submitted: submittedAll };
 	}
 	const allCount = scanned !== undefined ? scanned.timeline.length : list.length;
 	for (const [key, text, badge] of [["pending", tRef("todo.tab.tasks"), pending.length], ["all", tRef("todo.tab.all"), allCount]]) {
@@ -446,7 +459,7 @@ function renderPanel() {
 	const box = document.createElement("div");
 	box.className = "dsha2ui-todo-list";
 
-	const messageOf = (callId) => timelines.get(sessionId)?.timeline.find((entry) => entry.forms.some((form) => form.callId === callId));
+	const messageOf = (callId) => scanned?.timeline.find((entry) => entry.forms.some((form) => form.callId === callId));
 	const locateCard = (record) => {
 		const node = record?.getNode?.();
 		if (node !== null && node !== undefined) {
@@ -609,7 +622,7 @@ function renderPanel() {
 					const record = cards.get(form.callId);
 					const state = record !== undefined ? rowState(record)
 						: scanned.submitted.has(form.callId) ? { key: "done", at: scanned.submitted.get(form.callId).at }
-						: isSkipped(sessionId, form.callId) ? { key: "skipped" }
+						: isSkipped(entry.sessionId, form.callId) ? { key: "skipped" }
 						: { key: "empty", filled: 0, total: 0 };
 					const formRow = document.createElement("div");
 					formRow.className = "dsha2ui-todo-row dsha2ui-todo-formrow";
@@ -636,7 +649,7 @@ function renderPanel() {
 						skip.textContent = tRef("todo.skip");
 						skip.onclick = (event) => {
 							event.stopPropagation();
-							setSkipped(sessionId, form.callId, true);
+							setSkipped(entry.sessionId, form.callId, true);
 							queueRender();
 						};
 						formRow.appendChild(skip);
@@ -647,7 +660,7 @@ function renderPanel() {
 						restore.textContent = tRef("todo.restore");
 						restore.onclick = (event) => {
 							event.stopPropagation();
-							setSkipped(sessionId, form.callId, false);
+							setSkipped(entry.sessionId, form.callId, false);
 							queueRender();
 						};
 						formRow.appendChild(restore);
