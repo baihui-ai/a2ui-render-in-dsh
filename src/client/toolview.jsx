@@ -327,7 +327,7 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 	const storageKey = `dsh-a2ui:submitted:${sessionId}:${callId}`;
 	// Cards with input components are forms (a submission locks them); cards
 	// without inputs are browse-style — their buttons are queries and stay live.
-	const hasInputs = args !== null && args.components.some(
+	const hasInputs = args !== null && !isError && args.components.some(
 		(node) => node !== null && typeof node === "object" && ["MultipleChoice", "CheckBox", "TextField", "Select", "Rate", "Slider", "Upload", "Calendar", "RankList", "Signature", "EditableTable", "Wizard"].includes(node.component)
 	);
 
@@ -440,8 +440,8 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 	useEffect(() => {
 		if (!ready || !hasInputs || restoreRef.current !== false) return;
 		let cancelled = false;
-		scanSession(api, sessionId).then((submitted) => {
-			const hit = submitted.get(callId);
+		scanSession(api, sessionId).then((scan) => {
+			const hit = scan.submitted.get(callId);
 			if (cancelled || hit === undefined) return;
 			if (submitMode === "once") mirrorRef.current.lock();
 			writeSubmissionRecord(storageKey, { text: hit.text, at: hit.at ?? Date.now(), lock: submitMode === "once" });
@@ -452,16 +452,19 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [ready]);
 
-	// Register this form card on the floating 表单待办 panel.
+	// Register on the 表单待办 drawer: forms carry fill state; browse cards
+	// register too (kind "browse") so the 全部 tab can locate every card.
 	const wrapRef = useRef(null);
 	useEffect(() => {
-		if (!ready || !hasInputs) return undefined;
+		if (!ready || isError) return undefined;
 		const record = restoreRef.current;
 		return registerTodoCard({
 			sessionId,
 			callId,
+			api,
+			kind: hasInputs ? "form" : "browse",
 			title: typeof args.title === "string" && args.title !== "" ? args.title : t("card.title"),
-			fields: computeFields(args.components),
+			fields: hasInputs ? computeFields(args.components) : [],
 			mirror: mirrorRef.current,
 			getNode: () => wrapRef.current,
 			t,
@@ -529,10 +532,10 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 		}
 	}, [api, sessionId, storageKey, draftKey, callId, submitMode, hasInputs, resubmitting, t]);
 
-	if (args === null) {
+	if (args === null || isError) {
 		return (
 			<div className="dsha2ui-skeleton">
-				<span className={isError ? "" : "dsha2ui-pulse"}>▤</span>
+				<span className={isError || settled ? "" : "dsha2ui-pulse"}>▤</span>
 				<span>{isError || settled ? t("card.invalid") : t("card.building")}</span>
 			</div>
 		);

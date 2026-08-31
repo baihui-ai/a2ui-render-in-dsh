@@ -41,7 +41,8 @@ const T = (key) => ({
 	"card.title": "交互卡片", "card.building": "生成中…", "card.invalid": "解析失败",
 	"card.sending": "提交中…", "card.sent": "已提交", "card.error": "提交失败：",
 	"card.refill": "重新填写", "card.updated": "已更新卡片", "card.required": "请先完成：",
-	"todo.title": "表单待办", "todo.pending": "待填", "todo.done": "已交", "todo.filled": "已填", "todo.alldone": "已全部提交"
+	"todo.title": "表单待办", "todo.handle": "待办", "todo.pending": "待填", "todo.done": "已交", "todo.filled": "已填", "todo.alldone": "已全部提交",
+	"todo.tab.pending": "待提交", "todo.tab.all": "全部", "todo.unfilled": "未填写", "todo.skip": "无需填写", "todo.restore": "恢复", "todo.skipped": "已标记无需填写", "todo.empty": "没有待提交的表单 🎉"
 }[key] ?? key);
 
 function mkApi() {
@@ -372,6 +373,24 @@ const input = (el, value) => act(async () => {
 	];
 	const matched = matchTranscript(events);
 	assert(matched.get("c1")?.text === "提交问卷：很满意" && matched.get("c1").at === 222, "todo: transcript matching claims the right card");
+	const { buildTimeline } = await import("../src/client/todo.js");
+	const { timeline } = buildTimeline([
+		{ type: "user/message", time: 1, data: { source: { kind: "user" }, content: [{ type: "text", text: "第一个问题" }] } },
+		events[0],
+		{ type: "user/message", time: 2, data: { source: { kind: "user" }, content: [{ type: "text", text: "提交问卷：很满意" }] } },
+		{ type: "user/message", time: 3, data: { source: { kind: "user" }, content: [{ type: "text", text: "随便看看" }] } }
+	]);
+	assert(timeline.length === 2 && timeline[0].forms.length === 1 && timeline[1].forms.length === 0, "todo: timeline keeps questions, drops submission messages, attaches forms");
+	const failedEvents = [
+		{ type: "user/message", time: 1, data: { source: { kind: "user" }, content: [{ type: "text", text: "出题" }] } },
+		{ type: "tool/call", data: { callId: "bad1", name: "a2ui_render", arguments: JSON.stringify({ components: [{ id: "root", component: "Column" }, { id: "f", component: "TextField", bind: "x" }, { id: "b", component: "Button", label: "提交答案" }] }) } },
+		{ type: "tool/result", data: { callId: "bad1", isError: true } },
+		{ type: "tool/call", data: { callId: "good1", name: "a2ui_render", arguments: JSON.stringify({ components: [{ id: "root", component: "Column" }, { id: "f", component: "TextField", bind: "x" }, { id: "b", component: "Button", label: "提交答案" }] }) } },
+		{ type: "user/message", time: 2, data: { source: { kind: "user" }, content: [{ type: "text", text: "提交答案：B" }] } }
+	];
+	const failedMatch = matchTranscript(failedEvents);
+	assert(!failedMatch.has("bad1") && failedMatch.get("good1")?.text === "提交答案：B", "todo: errored render calls neither claim submissions nor count");
+	assert(buildTimeline(failedEvents).timeline[0].forms.length === 1, "todo: errored render calls stay out of the timeline");
 }
 
 // ---------- 17. draft: typed content survives remount without submitting ----------
@@ -391,7 +410,7 @@ const input = (el, value) => act(async () => {
 	assert(second.host.querySelector(".dsha2ui-input").value === "写了一半" && !second.host.querySelector(".dsha2ui-input").disabled, "draft: reload restores typed content unlocked");
 }
 
-// ---------- 18. todo drawer: handle count, rows, preview, done state ----------
+// ---------- 18. todo drawer: pending tab, timeline 全部, skip/restore ----------
 {
 	const api = mkApi();
 	const form = (n) => ({
@@ -401,6 +420,13 @@ const input = (el, value) => act(async () => {
 			{ id: "btn", component: "Button", label: `提交${n}`, action: { event: { name: "go" } } }
 		], dataModel: { memo: "" }
 	});
+	api.sessions.history = async () => ({ result: { value: { events: [
+		{ event: { type: "user/message", time: 1, data: { source: { kind: "user" }, content: [{ type: "text", text: "第一个问题：帮我建一张表单\n背景是周报收集" }] } } },
+		{ event: { type: "tool/call", data: { callId: "call_todo1", name: "a2ui_render", arguments: JSON.stringify(form(1)) } } },
+		{ event: { type: "user/message", time: 2, data: { source: { kind: "user" }, content: [{ type: "text", text: "第二个问题" }] } } },
+		{ event: { type: "tool/call", data: { callId: "call_todo2", name: "a2ui_render", arguments: JSON.stringify(form(2)) } } },
+		{ event: { type: "user/message", time: 3, data: { source: { kind: "user" }, content: [{ type: "text", text: "随便看看行情" }] } } }
+	] } } });
 	const one = await renderCard(form(1), { callId: "call_todo1", sessionId: "s-todo", api });
 	const two = await renderCard(form(2), { callId: "call_todo2", sessionId: "s-todo", api });
 	await input(one.host.querySelector(".dsha2ui-input"), "答案A");
@@ -410,14 +436,28 @@ const input = (el, value) => act(async () => {
 	const drawerHost = document.getElementById("dsha2ui-todo");
 	assert(drawerHost !== null, "todo: drawer appears once form cards exist");
 	const handle = drawerHost.querySelector(".dsha2ui-todo-handle");
-	assert(handle !== null && handle.dataset.state === "pending" && handle.textContent.includes("1"), "todo: collapsed handle counts pending forms");
+	assert(handle !== null && handle.dataset.state === "pending" && handle.querySelector(".dsha2ui-todo-count").textContent === "1", "todo: handle badge counts pending forms");
 	await act(async () => { handle.click(); });
+	await new Promise((resolve) => setTimeout(resolve, 60));
+	let rows = document.querySelectorAll(".dsha2ui-todo-row");
+	assert(rows.length === 1 && rows[0].dataset.state === "partial" && rows[0].textContent.includes("填了一半"), "todo: 待提交 lists only pending forms with preview");
+	await act(async () => { document.querySelectorAll(".dsha2ui-todo-tab")[1].click(); });
+	await new Promise((resolve) => setTimeout(resolve, 80));
+	const msgs = document.querySelectorAll(".dsha2ui-todo-msg");
+	assert(msgs.length === 3, "todo: 全部 lists every user message");
+	assert(msgs[0].textContent === "第一个问题：帮我建一张表单\n背景是周报收集", "todo: user messages shown in full, unabridged");
+	assert(document.querySelector('.dsha2ui-todo-formrow[data-state="done"]') !== null && document.querySelector('.dsha2ui-todo-formrow[data-state="partial"]') !== null, "todo: forms attach under their message with status");
+	await act(async () => { document.querySelector('.dsha2ui-todo-formrow[data-state="partial"] .dsha2ui-todo-skip').click(); });
 	await new Promise((resolve) => setTimeout(resolve, 30));
-	const rows = document.querySelectorAll(".dsha2ui-todo-row");
-	assert(rows.length === 2, "todo: drawer lists this session's form cards");
-	assert(document.querySelector('.dsha2ui-todo-row[data-done="1"]') !== null && document.querySelector('.dsha2ui-todo-row[data-done="0"]') !== null, "todo: submitted and pending rows distinguished");
-	assert([...rows].some((row) => /已填 \d+\/\d+/.test(row.textContent)), "todo: pending rows show filled/total counts");
-	assert(document.querySelector(".dsha2ui-todo-preview")?.textContent.includes("填了一半"), "todo: pending rows preview the filled content");
+	assert(document.querySelector('.dsha2ui-todo-formrow[data-state="skipped"]') !== null, "todo: 无需填写 marks the form skipped");
+	await act(async () => { document.querySelectorAll(".dsha2ui-todo-tab")[0].click(); });
+	await new Promise((resolve) => setTimeout(resolve, 30));
+	assert(document.querySelectorAll(".dsha2ui-todo-row").length === 0 && document.querySelector(".dsha2ui-todo-empty") !== null, "todo: skipped forms leave 待提交");
+	await act(async () => { document.querySelectorAll(".dsha2ui-todo-tab")[1].click(); });
+	await new Promise((resolve) => setTimeout(resolve, 60));
+	await act(async () => { document.querySelector('.dsha2ui-todo-formrow[data-state="skipped"] .dsha2ui-todo-skip').click(); });
+	await new Promise((resolve) => setTimeout(resolve, 30));
+	assert(document.querySelector('.dsha2ui-todo-formrow[data-state="partial"]') !== null, "todo: 恢复 brings it back");
 }
 
 // ---------- 19. cache-clear reconstruction from transcript ----------
