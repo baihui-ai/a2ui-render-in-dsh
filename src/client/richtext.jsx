@@ -11,6 +11,10 @@ export function rich(value) {
 	if (parts.length === 1) return text;
 	return parts.map((segment, index) => {
 		if (index % 2 === 0) return segment;
+		// Not everything between dollar signs is math: "套餐 $30 和 $45" would
+		// otherwise render "30 和" as KaTeX. Pure numbers/currency, or CJK text
+		// without any LaTeX command, stay literal.
+		if (/^[\d,.\s]+$/.test(segment) || (/[\u4e00-\u9fff]/.test(segment) && !segment.includes("\\"))) return `$${segment}$`;
 		let html;
 		try {
 			html = katex.renderToString(segment, { throwOnError: false, output: "htmlAndMathml" });

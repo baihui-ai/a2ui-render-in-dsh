@@ -36,7 +36,7 @@ a2ui-render-in-dsh (one npm package, a dsh bundle)
 
 **1. Proactive rendering, decided by the model — anchored on UI's purposes.** The tool contract frames the judgment as: would a card serve any of UI's four purposes better than prose? **Act** (the user must answer/choose/fill/adjust — render a form), **browse** (the user wants to see or scan data — statistics, rankings, distributions, trends get a chart/table/map, and uncertain data never cancels the card: chart the best known, label the period, caveat in prose), **understand** (structure or notation aids comprehension — math, code, flows, stepwise processes), or **feedback** (long multi-step work gets a progress card advanced via `a2ui_update`). None of the four → prose. Cards always **pair with prose**: the takeaway lives in 1–3 sentences of normal text, the structured content in the card, with no duplication. Grounded in HCI research (Norman's gulfs, the keyhole effect, external cognition) and verified with keyword-free prompts across all purposes plus prose negatives.
 
-**2. Skill-style context design (catalog on demand).** The full component catalog is NOT inlined in the tool description; it lives in a second tool, `a2ui_catalog`. Always-visible cost stays at ~220 tokens even as the catalog grew to 44 components. The model calls the catalog once before its first card in a conversation and reuses it for later cards; conversations that never draw a card pay nothing. The host validates component names and errors with a "call a2ui_catalog" hint, so the model can't silently guess wrong.
+**2. Skill-style context design (catalog on demand).** The full component catalog is NOT inlined in the tool description; it lives in a second tool, `a2ui_catalog`. The always-visible tool description stays at ~350 tokens for 44 components (the on-demand catalog is ~2.5k, paid once per card-using conversation). The model calls the catalog once before its first card in a conversation and reuses it for later cards; conversations that never draw a card pay nothing. The host validates component names and errors with a "call a2ui_catalog" hint, so the model can't silently guess wrong.
 
 **3. Non-blocking answers over the native message path.** Submissions need no custom server channel: the client sends the submission through dsh's own `session.prompt` RPC as an ordinary user message. Messages are **plain language** (button label + chosen values, multi-line for forms) — readable for humans, parseable for the model, no raw JSON in the conversation:
 
@@ -59,7 +59,9 @@ Tracks: Backend, Data Analysis
 ## Highlights
 
 - 🎯 **Adaptive**: the model chooses text vs. card; verified reliable in both directions
-- 🪶 **Context-friendly**: skill-style catalog design, ~220 tokens always-visible for 44 components
+- 🪶 **Context-friendly**: skill-style catalog design, ~350 tokens always-visible for 44 components
+- ✅ **Form validation**: `required: true` on any input blocks submission and highlights what's missing
+- 🗜️ **Upload compression**: photos are downscaled client-side (≤1568px, JPEG) before flowing into the prompt
 - 💬 **Elegant answers**: plain-language submissions, not raw JSON strings; photos & signatures return as real images
 - 🔒 **Submit-once locking**: forms can't double-submit, records persist, a "refill" button reopens them; query buttons unaffected
 - ⚡ **Streaming render**: cards appear progressively while the model is still writing the JSON
@@ -110,7 +112,7 @@ Tracks: Backend, Data Analysis
 | `Anim` | `frames, interval?, height?, autoplay?, labels?` | **Algorithm animation**: bars, grid/matrix, and graph/tree (BFS/DFS, auto circle layout) forms auto-detected; auto-plays once per card per tab, ↻ replay / pause / step / reset / progress / legend |
 | `Button` | `label, variant?, submit?, action: {event: {name, context?}}` | Sends the submission; `submit` explicitly controls card locking |
 | `MultipleChoice` | `options, bind, maxAllowedSelections?, disabled?` | Flat multi/single select (`maxAllowedSelections: 1` = single), per-option disable |
-| `Select` | `options, bind, label?, placeholder?, multiple?, maxAllowedSelections?, disabled?` | **Dropdown**: single stores a value, multi stores an array; option descriptions/disabling |
+| `Select` | `options, bind, label?, placeholder?, multiple?, maxAllowedSelections?, disabled?` | **Dropdown**: single stores a value, multi stores an array; auto search box on long lists |
 | `CheckBox` | `label, bind, disabled?` | Boolean toggle |
 | `Slider` | `bind, label?, min?, max?, step?, unit?` | Numeric slider; pairs with Chart `params` for live parameter exploration |
 | `Rate` | `bind, label?, max?` | Star rating |
@@ -129,8 +131,8 @@ Tracks: Backend, Data Analysis
 | `Countdown` | `to?/seconds?, label?` | Live countdown |
 | `TextField` | `label?, placeholder?, multiline?, bind, disabled?` | Text input |
 | `Wizard` | `steps, children, submitLabel?` | **Multi-step form**: one pane per step, prev/next + progress built in, final submit sends all collected fields |
-| `Calendar` | `bind, label?, min?, max?` | Month-view date picker with range limits |
-| `RankList` | `items, bind, label?` | Reorder options by priority; submits the ordered list |
+| `Calendar` | `bind, label?, min?, max?, range?` | Month-view date picker; `range: true` picks a start + end date |
+| `RankList` | `items, bind, label?` | Drag (or tap ↑↓) to reorder by priority; submits the ordered list |
 | `EditableTable` | `columns, rows, bind, label?` | User edits cells inline; the whole grid submits |
 | `Upload` | `bind?, label?, max?` | Image picker — chosen photos are sent back to the model as **real images** |
 | `Signature` | `label?` | Handwritten signature pad; the drawing returns as an image |
@@ -138,7 +140,7 @@ Tracks: Backend, Data Analysis
 
 **Inline math**: every text position (Text, option labels, table cells, steps, flashcards, animation captions) may embed KaTeX with `$...$` — math-quiz OPTIONS can be formulas. **Reactive bindings**: inputs write the data model and every `{"path"}` binding updates live — slider→curve (Chart `params`), choice→follow-up (When), input→computed result (Calc→Stat), switcher→dataset (Tabs / Table dictionary binding).
 
-Common to inputs: **preselect** by seeding `dataModel` at the bind path; **disable** via component-level `disabled: true` or per-option `disabled`. Data binding: `bind` is a write path WITHOUT a leading slash; display props read live values with `{"path": "/x"}` (WITH a slash).
+Common to inputs: **preselect** by seeding `dataModel` at the bind path; **disable** via component-level `disabled: true` or per-option `disabled`; **require** via `required: true` (submission blocks and highlights until filled). `a2ui_update` dataModel changes re-sync bound inputs in place. Data binding: `bind` is a write path WITHOUT a leading slash; display props read live values with `{"path": "/x"}` (WITH a slash).
 
 ## Installation
 
@@ -147,6 +149,8 @@ Common to inputs: **preselect** by seeding `dataModel` at the bind path; **disab
 | Requirement | Notes |
 |---|---|
 | dsh | `@deepseek-ai/dsh` ≥ 0.1.1-rc.1 with an initialized web profile (run `dsh web` once before installing) |
+
+Development: `npm test` runs the jsdom interaction suite (host validation + full component/interaction coverage, ~50 assertions).
 | Node.js | ≥ 20 (with npm) |
 
 ### Option A · From npm (recommended)

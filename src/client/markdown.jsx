@@ -27,8 +27,11 @@ function inline(text, keyBase) {
 }
 
 export function Markdown({ text }) {
-	// tolerate double-escaped newlines/tabs from model JSON
-	const source = typeof text === "string" ? text.replaceAll("\\n", "\n").replaceAll("\\t", "\t") : "";
+	// Tolerate double-escaped newlines from model JSON — but ONLY when the text
+	// has no real newlines at all (otherwise a literal \n inside fenced code,
+	// e.g. printf("a\n"), is content and must survive).
+	const raw = typeof text === "string" ? text : "";
+	const source = raw !== "" && !raw.includes("\n") ? raw.replaceAll("\\n", "\n").replaceAll("\\t", "\t") : raw;
 	if (source === "") return null;
 	const lines = source.split("\n");
 	const blocks = [];

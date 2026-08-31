@@ -14,7 +14,8 @@ const zh = {
 	"card.sent": "已提交",
 	"card.error": "提交失败：",
 	"card.refill": "重新填写",
-	"card.updated": "已更新卡片"
+	"card.updated": "已更新卡片",
+	"card.required": "请先完成："
 };
 
 const en = {
@@ -25,7 +26,8 @@ const en = {
 	"card.sent": "Submitted",
 	"card.error": "Submit failed:",
 	"card.refill": "Refill",
-	"card.updated": "Card updated"
+	"card.updated": "Card updated",
+	"card.required": "Please complete: "
 };
 
 export const name = "a2ui-client";

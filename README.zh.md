@@ -35,7 +35,7 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 
 **1. 主动式渲染，由模型判断——锚定 UI 的目的。** 工具契约把判断框定为：卡片能否在 UI 的四个目的之一上胜过纯文本？**方便操作**（用户要回答/选择/填写/调节——渲染表单）、**方便浏览**（用户想看/扫数据——统计、排名、分布、趋势出图表/表格/地图，数据不确定也不取消卡片：画已知最好的数据、标注时间口径、正文说明局限）、**增强理解**（结构或记号帮助理解——数学、代码、流程、分步过程）、**状态反馈**（长/多步任务先出进度卡，`a2ui_update` 原地推进）。四者都不沾 → 纯文本。卡片始终**与文案搭配**：结论/看点用 1–3 句正文说，结构化内容进卡片，两边不重复。判断框架有 HCI 理论依据（Norman 双鸿沟、钥匙孔效应、外部认知），并用无关键词的自然语言提示词对各目的 + 纯文本反例实测。
 
-**2. skill 式上下文设计（目录按需加载）。** 完整组件目录不内联在工具描述里，而是放进 `a2ui_catalog` 工具：组件扩到 44 个，常驻上下文仍稳定在 ~220 token；模型首次画卡前调用一次目录，同会话后续卡片直接复用；不画卡的会话零目录开销。服务端校验未知组件名并报错引导查目录，防止模型跳过目录瞎猜。
+**2. skill 式上下文设计（目录按需加载）。** 完整组件目录不内联在工具描述里，而是放进 `a2ui_catalog` 工具：44 个组件的常驻工具描述约 ~350 token（按需目录约 2.5k，每个用卡会话只付一次）；模型首次画卡前调用一次目录，同会话后续卡片直接复用；不画卡的会话零目录开销。服务端校验未知组件名并报错引导查目录，防止模型跳过目录瞎猜。
 
 **3. 非阻塞回传，复用原生消息通路。** 卡片提交不需要自定义 server 通道：客户端通过 dsh 自身的 `session.prompt` RPC 把提交内容作为普通用户消息发回会话。消息是**自然语言**（按钮文案 + 所选内容，多字段换行列出），对人可读、对模型可解析，不污染对话观感：
 
@@ -58,7 +58,9 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 ## 亮点
 
 - 🎯 **自适应**：模型自行判断"文本还是卡片"，双向实测可靠
-- 🪶 **上下文友好**：skill 式目录设计，44 个组件常驻开销仅 ~220 token
+- 🪶 **上下文友好**：skill 式目录设计，44 个组件常驻开销约 ~350 token
+- ✅ **表单校验**：任意输入组件可设 `required: true`——提交被拦截并高亮缺失项
+- 🗜️ **上传压缩**：照片在客户端先压到 ≤1568px JPEG 再进消息，手机原图不再撑爆对话
 - 💬 **优雅回传**：自然语言提交消息，非 JSON 裸串；照片、签名以真实图片回传
 - 🔒 **提交即锁定**：表单防重复提交，记录持久化，"重新填写"可解锁；查询按钮不受影响
 - ⚡ **流式渲染**：模型边写 JSON，卡片边逐块出现
@@ -109,7 +111,7 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 | `Anim` | `frames, interval?, height?, autoplay?, labels?` | **算法动画**：数组/柱状、网格/矩阵、图/树（BFS/DFS，自动圆形布局）三形态自动识别；每卡每页签只自动播一遍，↻ 重播/暂停/单步/重置/进度条/图例 |
 | `Button` | `label, variant?, submit?, action: {event: {name, context?}}` | 触发回传；`submit` 显式控制是否锁卡 |
 | `MultipleChoice` | `options, bind, maxAllowedSelections?, disabled?` | 平铺多选/单选（`maxAllowedSelections: 1` 单选），选项级禁用 |
-| `Select` | `options, bind, label?, placeholder?, multiple?, maxAllowedSelections?, disabled?` | **下拉选择**：单选存值、多选存数组，选项描述/禁用 |
+| `Select` | `options, bind, label?, placeholder?, multiple?, maxAllowedSelections?, disabled?` | **下拉选择**：单选存值、多选存数组；长列表自动带搜索框 |
 | `CheckBox` | `label, bind, disabled?` | 布尔勾选 |
 | `Slider` | `bind, label?, min?, max?, step?, unit?` | 数值滑杆；配合 Chart `params` 做参数探索联动 |
 | `Rate` | `bind, label?, max?` | 星级评分 |
@@ -128,8 +130,8 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 | `Countdown` | `to?/seconds?, label?` | 实时倒计时 |
 | `TextField` | `label?, placeholder?, multiline?, bind, disabled?` | 文本输入 |
 | `Wizard` | `steps, children, submitLabel?` | **分步表单**：每步一个面板，内置上一步/下一步 + 进度，最后一步提交全部字段 |
-| `Calendar` | `bind, label?, min?, max?` | 月视图日期选择，支持范围限制 |
-| `RankList` | `items, bind, label?` | 用户按优先级排序选项，提交排好的列表 |
+| `Calendar` | `bind, label?, min?, max?, range?` | 月视图日期选择；`range: true` 选起止两天 |
+| `RankList` | `items, bind, label?` | 拖拽（或点 ↑↓）按优先级排序，提交排好的列表 |
 | `EditableTable` | `columns, rows, bind, label?` | 用户直接改单元格，整表提交 |
 | `Upload` | `bind?, label?, max?` | 图片选择器——所选照片以**真实图片**回传给模型 |
 | `Signature` | `label?` | 手写签名画板，笔迹以图片回传 |
@@ -137,7 +139,7 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 
 **内联公式**：所有文本位置（Text、选项、表格单元格、步骤、闪卡、动画解说）支持 `$...$` 内嵌 KaTeX——数学选择题的选项可以直接是公式。**响应式联动**：输入组件写数据模型，所有 `{"path"}` 绑定即时更新——滑杆→曲线（Chart `params`）、选择→追问（When）、输入→计算结果（Calc→Stat）、切换→换表（Tabs/Table 字典绑定）。
 
-输入组件通用：**预选中**在 `dataModel` 给 bind 路径设初值；**禁用**用组件级 `disabled: true` 或选项级 `disabled`。数据绑定：`bind` 为不带前导斜杠的写入路径；展示属性用 `{"path": "/x"}`（带斜杠）读实时值。
+输入组件通用：**预选中**在 `dataModel` 给 bind 路径设初值；**禁用**用组件级 `disabled: true` 或选项级 `disabled`；**必填**用 `required: true`（未填完提交被拦截并高亮）。`a2ui_update` 改写 dataModel 后，绑定的输入组件会原地同步。数据绑定：`bind` 为不带前导斜杠的写入路径；展示属性用 `{"path": "/x"}`（带斜杠）读实时值。
 
 ## 安装
 
@@ -146,6 +148,8 @@ a2ui-render-in-dsh (一个 npm 包，dsh bundle)
 | 要求 | 说明 |
 |---|---|
 | dsh | `@deepseek-ai/dsh` ≥ 0.1.1-rc.1，且 web profile 已初始化（装插件前先运行过一次 `dsh web`） |
+
+开发：`npm test` 运行 jsdom 交互测试套件（宿主校验 + 组件/交互全覆盖，约 50 条断言）。
 | Node.js | ≥ 20（含 npm） |
 
 ### 方式 A · npm 安装（推荐）

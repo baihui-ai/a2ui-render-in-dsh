@@ -123,24 +123,14 @@ export function Chart({ option, height, width, functions, params, xMin, xMax, sa
 	};
 	const functionMode = Array.isArray(functions) && functions.length > 0;
 
+	// Init exactly once; prop changes (incl. Slider-driven params) flow through
+	// an incremental setOption — rebuilding the instance per change made
+	// parameter dragging visibly janky.
 	useEffect(() => {
 		const node = holder.current;
 		if (node === null) return undefined;
-		if (!functionMode && (option === null || typeof option !== "object")) return undefined;
-		let chart;
-		try {
-			const resolved = withSafeLayout(functionMode
-				? buildFunctionOption(functions, option, { xMin, xMax, samples, yClip, params })
-				: option ?? {});
-			chart = echarts.init(node, isDarkTheme() ? "dark" : undefined);
-			chart.setOption(resolved, true);
-			chartInst.current = chart;
-		} catch (err) {
-			setError(String(err?.message ?? err));
-			chart?.dispose();
-			return undefined;
-		}
-		setError(null);
+		const chart = echarts.init(node, isDarkTheme() ? "dark" : undefined);
+		chartInst.current = chart;
 		let observer;
 		if (typeof ResizeObserver !== "undefined") {
 			observer = new ResizeObserver(() => chart.resize());
@@ -149,14 +139,34 @@ export function Chart({ option, height, width, functions, params, xMin, xMax, sa
 		return () => {
 			observer?.disconnect();
 			chart.dispose();
+			chartInst.current = null;
 		};
-	}, [option, functions, JSON.stringify(params), xMin, xMax, samples, yClip, functionMode]);
+	}, []);
+
+	const signature = JSON.stringify({ option, functions, params, xMin, xMax, samples, yClip });
+	useEffect(() => {
+		const chart = chartInst.current;
+		if (chart === null) return;
+		if (!functionMode && (option === null || typeof option !== "object")) return;
+		try {
+			const resolved = withSafeLayout(functionMode
+				? buildFunctionOption(functions, option, { xMin, xMax, samples, yClip, params })
+				: option ?? {});
+			chart.setOption(resolved, true);
+			setError(null);
+		} catch (err) {
+			setError(String(err?.message ?? err));
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [signature]);
 
 	if (!functionMode && (option === null || typeof option !== "object")) return <VizError message="Chart: missing option" />;
-	if (error !== null) return <VizError message={`Chart: ${error}`} />;
 	return (
 		<ZoomableFigure zoom={false} fullHeightClass="dsha2ui-fig-fill" extraTool={{ title: "下载图片", icon: "⭳", onClick: download }}>
-			<div ref={holder} className="dsha2ui-chart" style={{ height: height ?? 300, width: width ?? "100%" }} />
+			<>
+				{error !== null ? <VizError message={`Chart: ${error}`} /> : null}
+				<div ref={holder} className="dsha2ui-chart" style={{ height: height ?? 300, width: width ?? "100%", ...error !== null ? { display: "none" } : {} }} />
+			</>
 		</ZoomableFigure>
 	);
 }
@@ -795,10 +805,25 @@ export function Flashcard({ front, back, frontLabel, backLabel }) {
 }
 
 export function Countdown({ to, seconds, label }) {
+	const mirror = useContext(CardMirrorContext);
 	const targetRef = useRef(null);
 	if (targetRef.current === null) {
 		if (typeof to === "string" && !Number.isNaN(Date.parse(to.replace(" ", "T")))) targetRef.current = Date.parse(to.replace(" ", "T"));
-		else if (typeof seconds === "number" && seconds > 0) targetRef.current = Date.now() + seconds * 1000;
+		else if (typeof seconds === "number" && seconds > 0) {
+			// Anchor the deadline in sessionStorage so a component remount
+			// (scrolling, stream updates) never restarts the countdown.
+			const key = `${mirror?.animStorageKey ?? "dsh-a2ui"}#cd:${seconds}:${typeof label === "string" ? label : ""}`;
+			try {
+				const stored = Number(sessionStorage.getItem(key));
+				if (Number.isFinite(stored) && stored > 0) targetRef.current = stored;
+				else {
+					targetRef.current = Date.now() + seconds * 1000;
+					sessionStorage.setItem(key, String(targetRef.current));
+				}
+			} catch {
+				targetRef.current = Date.now() + seconds * 1000;
+			}
+		}
 		else targetRef.current = 0;
 	}
 	const [now, setNow] = useState(Date.now());
@@ -838,6 +863,25 @@ export function ImageCompare({ before, after, beforeLabel, afterLabel }) {
 }
 
 let chinaMapRegistered = false;
+let chinaNameIndex = null;
+
+/**
+ * Models write province names in either form ("广东" or "广东省"); the geoJSON
+ * registers FULL names only, and unmatched entries silently render as no-data
+ * (every tooltip showing "—"). Index full names by their short aliases and
+ * normalize incoming data.
+ */
+function buildChinaNameIndex(geo) {
+	const index = new Map();
+	for (const feature of Array.isArray(geo?.features) ? geo.features : []) {
+		const full = feature?.properties?.name;
+		if (typeof full !== "string" || full === "") continue;
+		index.set(full, full);
+		const short = full.replace(/(维吾尔|壮族|回族)?(省|市|自治区|特别行政区)$/, "");
+		if (short !== "" && short !== full) index.set(short, full);
+	}
+	return index;
+}
 
 export function MapChart({ data, title, height, unit }) {
 	const holder = useRef(null);
@@ -851,15 +895,17 @@ export function MapChart({ data, title, height, unit }) {
 				if (!chinaMapRegistered) {
 					const geo = (await import("./china-geo.js")).default;
 					echarts.registerMap("china", geo);
+					chinaNameIndex = buildChinaNameIndex(geo);
 					chinaMapRegistered = true;
 				}
-				const list = Array.isArray(data) ? data.filter((item) => item !== null && typeof item === "object") : [];
+				const list = (Array.isArray(data) ? data.filter((item) => item !== null && typeof item === "object") : [])
+					.map((item) => ({ ...item, name: chinaNameIndex?.get(String(item.name ?? "").trim()) ?? item.name }));
 				const values = list.map((item) => Number(item.value)).filter(Number.isFinite);
 				chart = echarts.init(node, isDarkTheme() ? "dark" : undefined);
 				chart.setOption({
 					backgroundColor: "transparent",
 					...title !== undefined ? { title: { text: String(title), left: "center", textStyle: { fontSize: 14 } } } : {},
-					tooltip: { trigger: "item", formatter: (info) => `${info.name}: ${Number.isFinite(info.value) ? info.value : "—"}${unit ?? ""}` },
+					tooltip: { trigger: "item", formatter: (info) => `${info.name}：${Number.isFinite(info.value) ? `${info.value}${unit ?? ""}` : "暂无数据"}` },
 					visualMap: { min: values.length > 0 ? globalThis.Math.min(...values) : 0, max: values.length > 0 ? globalThis.Math.max(...values) : 100, left: 10, bottom: 10, calculable: true, inRange: { color: ["#e8f0fd", "#5b9cf5", "#1668dc"] }, textStyle: { color: isDarkTheme() ? "#9aa3b2" : "#666" } },
 					series: [{ type: "map", map: "china", roam: true, label: { show: false }, emphasis: { label: { show: true, fontSize: 11 } }, data: list }]
 				});

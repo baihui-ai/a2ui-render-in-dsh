@@ -57,6 +57,27 @@ function createMirror() {
 			notify();
 		},
 		disabledSnapshot: () => busy || locked,
+		required: new Map(), // path (with slash) -> { label, test }
+		invalid: new Set(),
+		invalidRev: 0,
+		invalidSnapshot: () => store.invalidRev,
+		setInvalid(paths) {
+			store.invalid = new Set(paths);
+			store.invalidRev++;
+			notify();
+		},
+		clearInvalid(path) {
+			if (store.invalid.delete(path)) {
+				store.invalidRev++;
+				notify();
+			}
+		},
+		extRev: 0,
+		extSnapshot: () => store.extRev,
+		bumpExt() {
+			store.extRev++;
+			notify();
+		},
 		lock() {
 			locked = true;
 			notify();
@@ -86,9 +107,39 @@ function readSubmissionRecord(storageKey) {
 function writeSubmissionRecord(storageKey, record) {
 	try {
 		localStorage.setItem(storageKey, JSON.stringify(record));
+		pruneStorage();
 	} catch {
 		// storage unavailable — the record still lives in the conversation
 	}
+}
+
+// Submission/update records would otherwise accumulate forever; on every
+// write, drop entries older than 30 days and cap the total at 300 newest.
+const STORE_TTL_MS = 30 * 24 * 3600 * 1000;
+const STORE_MAX = 300;
+function pruneStorage() {
+	try {
+		const now = Date.now();
+		const entries = [];
+		for (let index = 0; index < localStorage.length; index++) {
+			const key = localStorage.key(index);
+			if (key === null || !key.startsWith("dsh-a2ui:")) continue;
+			let at = 0;
+			try {
+				const value = JSON.parse(localStorage.getItem(key) ?? "null");
+				if (Array.isArray(value)) at = Math.max(0, ...value.map((entry) => (entry !== null && typeof entry === "object" && typeof entry.at === "number" ? entry.at : 0)));
+				else if (value !== null && typeof value === "object" && typeof value.at === "number") at = value.at;
+			} catch { /* unparsable — treated as stale (at = 0) */ }
+			entries.push({ key, at });
+		}
+		const keep = [];
+		for (const entry of entries) {
+			if (now - entry.at > STORE_TTL_MS) localStorage.removeItem(entry.key);
+			else keep.push(entry);
+		}
+		keep.sort((a, b) => b.at - a.at);
+		for (const entry of keep.slice(STORE_MAX)) localStorage.removeItem(entry.key);
+	} catch { /* storage unavailable */ }
 }
 
 function formatTime(at) {
@@ -226,7 +277,7 @@ function readUpdates(key) {
 }
 
 /** The a2ui_update tool row: applies the update to the target card and records it. */
-export function A2uiUpdateView({ block, sessionId, t }) {
+export function A2uiUpdateView({ callId, block, sessionId, t }) {
 	const settled = "kind" in block;
 	const argsRaw = (settled ? block.call?.argsRaw : block.argsRaw) ?? "";
 	const appliedRef = useRef(false);
@@ -236,10 +287,14 @@ export function A2uiUpdateView({ block, sessionId, t }) {
 		if (update === null || typeof update.surfaceId !== "string" || appliedRef.current) return;
 		appliedRef.current = true;
 		const storeKey = `dsh-a2ui:updates:${sessionId}:${update.surfaceId}`;
+		// Dedupe by this update's own callId: a remounted update view must not
+		// append the same record again (the target already replayed it).
+		const list = readUpdates(storeKey);
+		if (list.some((entry) => entry !== null && typeof entry === "object" && entry.id === callId)) return;
 		try {
-			const list = readUpdates(storeKey);
-			list.push({ components: update.components, dataModel: update.dataModel });
+			list.push({ id: callId, at: Date.now(), components: update.components, dataModel: update.dataModel });
 			localStorage.setItem(storeKey, JSON.stringify(list));
+			pruneStorage();
 		} catch { /* storage unavailable */ }
 		SURFACES.get(update.surfaceId)?.(update);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -285,8 +340,19 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 	const updatesKey = `dsh-a2ui:updates:${sessionId}:${callId}`;
 	const [extraCommands, setExtraCommands] = useState(() => readUpdates(updatesKey).flatMap((update) => updateCommands(callId, update)));
 	useEffect(() => {
-		SURFACES.set(callId, (update) => setExtraCommands((prev) => [...prev, ...updateCommands(callId, update)]));
-		return () => { if (SURFACES.get(callId) !== undefined) SURFACES.delete(callId); };
+		const applyUpdate = (update) => {
+			// Keep the mirror in sync so submissions snapshot the updated values
+			// and inputs re-render with them (useExternalValue).
+			if (update.dataModel !== null && typeof update.dataModel === "object") {
+				for (const [key, value] of Object.entries(update.dataModel)) mirrorRef.current.set(`/${key}`, value);
+				mirrorRef.current.bumpExt();
+			}
+			setExtraCommands((prev) => [...prev, ...updateCommands(callId, update)]);
+		};
+		SURFACES.set(callId, applyUpdate);
+		// Delete only our own registration — StrictMode double-mounts would
+		// otherwise remove the newer mount's entry.
+		return () => { if (SURFACES.get(callId) === applyUpdate) SURFACES.delete(callId); };
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [callId]);
 	const commands = useMemo(() => {
@@ -308,6 +374,20 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 	// Surface a restored record in the footer once args have parsed.
 	const ready = args !== null;
 	useEffect(() => {
+		if (!ready) return;
+		let changed = false;
+		for (const update of readUpdates(updatesKey)) {
+			if (update !== null && typeof update === "object" && update.dataModel !== null && typeof update.dataModel === "object") {
+				for (const [key, value] of Object.entries(update.dataModel)) {
+					mirrorRef.current.set(`/${key}`, value);
+					changed = true;
+				}
+			}
+		}
+		if (changed) mirrorRef.current.bumpExt();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [ready]);
+	useEffect(() => {
 		const record = restoreRef.current;
 		if (record !== null && record !== false) {
 			setSendState({ kind: "sent", name: record.text.split("\n")[0] + (record.text.includes("\n") ? " …" : ""), at: record.at });
@@ -322,6 +402,22 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 		const shouldLock = isSuggestion ? false : submitMode === "multi" ? false : typeof meta.__submit === "boolean" ? meta.__submit : hasInputs;
 		const baseText = isSuggestion ? meta.__suggestion : buildSubmissionText(buttonLabel, payload.context, mirrorRef.current);
 		const text = !isSuggestion && resubmitting ? `（修正）${baseText}` : baseText;
+		if (!isSuggestion && hasInputs && meta.__submit !== false && mirrorRef.current.required.size > 0) {
+			const missing = [];
+			const bad = [];
+			for (const [path, entry] of mirrorRef.current.required) {
+				if (!entry.test(mirrorRef.current.get(path))) {
+					missing.push(entry.label);
+					bad.push(path);
+				}
+			}
+			if (missing.length > 0) {
+				mirrorRef.current.setInvalid(bad);
+				setSendState({ kind: "error", name: buttonLabel, message: `${t("card.required")}${missing.join("、")}` });
+				return;
+			}
+			mirrorRef.current.setInvalid([]);
+		}
 		setSendState({ kind: "sending", name: buttonLabel });
 		mirrorRef.current.setBusy(true);
 		try {
@@ -350,7 +446,7 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 		} finally {
 			mirrorRef.current.setBusy(false);
 		}
-	}, [api, sessionId, storageKey, submitMode, hasInputs, resubmitting]);
+	}, [api, sessionId, storageKey, submitMode, hasInputs, resubmitting, t]);
 
 	if (args === null) {
 		return (

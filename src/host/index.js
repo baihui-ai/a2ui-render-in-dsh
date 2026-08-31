@@ -17,7 +17,7 @@ const KNOWN_COMPONENTS = new Set([
 
 const CATALOG_DOC = `# a2ui_render authoring guide
 
-Forms: each question = one field; options -> MultipleChoice/Select; free answers -> TextField (multiline for long); offering suggestions? ALSO add a TextField for a custom answer; several questions = ONE card, ONE submit Button labeled with the action ("提交", "确认建档"). Multiple items or several charts = ONE call with a Grid. Display-only cards (no Button) are fine. ALWAYS accompany the card with 1-3 sentences of normal prose in your reply (the takeaway, what to look at, or caveats) — a bare card with no text reads as unfinished; but never restate the card's data in text.
+Forms: each question = one field; options -> MultipleChoice/Select; free answers -> TextField (multiline for long); offering suggestions? ALSO add a TextField for a custom answer; several questions = ONE card, ONE submit Button labeled with the action ("提交", "确认建档"). Multiple items or several charts = ONE call with a Grid. Display-only cards (no Button) are fine. Pair every card with 1-3 sentences of prose (takeaway/caveats) — never restate its data in text.
 
 ## Components (adjacency list; MUST include id "root"; only these names render)
 Layout:
@@ -26,16 +26,16 @@ Layout:
 - Card {children, title?} · List {children, direction?} · Divider {}
 - Tabs {tabs: ["名"…], children, bind?} — one child per tab; dataset switching / grouping
 - When {value: {"path": "/x"}, equals?, includes?, notEmpty?, children} — children render only when the bound value matches; use for follow-up fields (e.g. reason box when choice includes "其他")
-- Wizard {steps: ["步骤名"…], children, submitLabel?} — multi-step form: one child (a Column of fields) per step, built-in 上一步/下一步/progress, the last step's submit sends ALL collected fields at once; use when a form has 5+ questions
+- Wizard {steps: ["步骤名"…], children, submitLabel?} — multi-step form: one child (Column of fields) per step, built-in prev/next/progress, last step submits ALL fields; use for 5+ questions
 Content (Chart/Mermaid/Image auto-get fullscreen zoom; don't oversize):
 - Text {text, variant?: "h1"|"h2"|"h3"|"body"|"caption"|"strong"}
-- Markdown {text} — rich long-form text (headings, bold/italic, links, lists, quotes, fenced code, $...$ math); USE instead of stacking Text components for any multi-paragraph explanation inside a card
+- Markdown {text} — rich long-form (headings, bold/italic, links, lists, quotes, fenced code, $...$ math); use for any multi-paragraph text instead of stacked Texts
 - Image {url, alt?, width?, height?} · Tag {text, color?: "blue"|"green"|"red"|"orange"|"gray"}
 - Icon {name, size?, color?} — check x plus minus warning info star heart calendar clock location user search settings mail phone home file link download upload play music image cart tag gift trophy fire bolt sun moon cloud thumbs-up
 - Math {tex, block?} — KaTeX. ALL math notation goes here, matrices included: never raw arrays like [[2,1],[0,3]] in Text — write {"tex": "\\\\begin{pmatrix}2&1\\\\\\\\0&3\\\\end{pmatrix}", "block": true} (row sep \\\\\\\\). Equation above its Anim when animating.
 - Mermaid {code, caption?} — flowchart ("graph TD; A[开始]-->B{判断}"), mindmap, sequenceDiagram, gantt, pie, stateDiagram
 - Chart {option, height?, functions?, params?, xMin?, xMax?, yClip?} — ECharts (viewers get a PNG-download button). Data mode: standard option verbatim. Function mode: functions=[{"expr":"tan(x)","name"?}], xMin/xMax (±10), yClip (10); sampled automatically, asymptotes break — NEVER hand-enumerate curve points. Ops: + - * / ^ %, sin cos tan cot sec csc asin acos atan sinh cosh tanh sqrt cbrt abs exp ln log2 log10 floor ceil round sign min max pow atan2, pi/e, x. params: {"mu":{"path":"/mu"}} injects bound values as constants — pair with Slider for live curves.
-- Table {columns, rows, caption?, sortable?, filter?, pageSize?} — any 2+ item attribute comparison beats prose. Interactive by default: click-to-sort headers, auto filter box and pagination on long data, copy/CSV export built in. Dict binding: rows={"source":{"k1":[[…]],…},"pick":{"path":"/k"}} + a Select/Tabs on that path switches datasets live.
+- Table {columns, rows, caption?, sortable?, filter?, pageSize?} — for any 2+ item comparison; sort/filter/pagination/copy/CSV are automatic. Dict binding: rows={"source":{"k1":[[…]],…},"pick":{"path":"/k"}} + a Select/Tabs on that path switches datasets live.
 - Stat {label, value, unit?, trend?, hint?} — KPI tile ("+12%" green / "-3%" red); several in a Grid
 - Steps {items: [{title, description?, status?: "done"|"current"|"pending"}]} — linear procedures; Mermaid flowchart only when it BRANCHES
 - Progress {value, max?, label?} · Timeline {items: [{time?, title, description?}]} (past events; Steps = to-dos)
@@ -53,15 +53,15 @@ Interaction:
 - Select {options, bind, label?, placeholder?, multiple?, maxAllowedSelections?, disabled?} — dropdown; single stores value, multiple stores array
 - Rate {bind, label?, max?, disabled?} — stars 1..max (5)
 - Slider {bind, label?, min?, max?, step?, unit?, disabled?} — numbers in a range; parameter exploration with Chart params
-- Calc {expr, inputs: {name: {"path": "/x"}…}, out, digits?} — invisible derived number written at out; chainable (one Calc's out feeds another's inputs). digits rounds DISPLAY values only — omit on intermediate results (rates, ratios) to keep full precision
+- Calc {expr, inputs: {name: {"path": "/x"}…}, out, digits?} — invisible derived number written at out; chainable. digits rounds display only — omit on intermediates to keep precision
 - CheckBox {label, bind, disabled?} · TextField {label?, placeholder?, multiline?, kind?: "text"|"number"|"date"|"time", bind, disabled?}
-- Upload {bind?, label?, max?} — image picker; chosen images are SENT TO YOU with the submission (screenshots, photos, receipts — use whenever seeing an image would help)
-- Calendar {bind, label?, min?, max?} — month-view date picker (friendlier than kind:"date" for choosing among nearby dates)
+- Upload {bind?, label?, max?} — image picker; chosen images are SENT TO YOU with the submission (use whenever seeing an image helps)
+- Calendar {bind, label?, min?, max?, range?} — month-view date picker; range: true picks start+end (value ["起","止"])
 - RankList {items: ["选项"…], bind, label?} — user reorders by priority; submits the ordered list
 - Signature {label?} — handwritten signature pad; the drawing is sent to you as an image
 - EditableTable {columns, rows, bind, label?} — user edits cells, the whole grid submits at bind
-- Suggestions {items: ["追问1", "追问2"…]} — tappable follow-up questions below an answer; tapping sends that question as the user's message. ADD 2-4 to display-only cards when natural next questions exist
-Preselect by seeding dataModel at bind paths; disable via disabled on a control or an option.
+- Suggestions {items: ["追问1"…]} — tappable follow-ups; a tap sends that question as the user's message. ADD 2-4 to display-only cards
+Preselect by seeding dataModel at bind paths; disable via disabled on a control or option. Any input takes required: true — submit is blocked (field highlighted) until filled; give required fields labels.
 
 ## Reactivity
 Bindings are live: inputs write bind paths, every {"path"} display binding updates instantly.
@@ -72,7 +72,7 @@ Bindings are live: inputs write bind paths, every {"path"} display binding updat
 Seed every bound path in dataModel.
 
 ## Scenario map
-Input collection -> form (TextField/kind date|time|number, MultipleChoice 2-7 options, Select for long lists, CheckBox, Rate). Decisions -> Grid Cards + Table; lone confirm Button gets submit:true. Data -> Chart (trend/rank/share) + Stat tiles + Table. Learning -> MultipleChoice quizzes (options may be formulas), Math, Chart functions (+Slider), Anim, mindmap, Flashcard, CodeBlock. Procedures -> Steps (Timeline for history, Progress for completion, gantt/Table for schedules). Entertainment -> Grid recommendation cards, Rate, polls via MultipleChoice.
+Input collection -> form (TextField/kind date|time|number, MultipleChoice 2-7 options, Select for long lists, CheckBox, Rate). Decisions -> Grid Cards + Table; lone confirm Button gets submit:true. Data -> Chart (trend/rank/share) + Stat tiles + Table; regional -> Map. Learning -> MultipleChoice quizzes (options may be formulas), Math, Chart functions (+Slider), Anim, mindmap, Flashcard, CodeBlock. Procedures -> Steps (Timeline for history, Progress for completion, gantt/Table for schedules). Entertainment -> Grid recommendation cards, Rate, polls via MultipleChoice.
 
 ## Inline math
 Any text prop (Text, option labels/descriptions, Table cells, Steps, Flashcard, Anim notes) embeds formulas with $...$, e.g. option {"label": "$\\\\frac{x^2}{2}+C$"}. Math component = display equations; $...$ = math inside sentences/choices. In math quizzes, option labels with fractions/roots/integrals/exponents SHOULD be $...$ formulas (e.g. {"label": "$3x^2$"}), not Unicode approximations.
@@ -81,16 +81,16 @@ Any text prop (Text, option labels/descriptions, Table cells, Steps, Flashcard, 
 "bind" = write path WITHOUT leading slash ("answer", "form/name"). Display reads use {"path": "/answer"} (WITH slash). Avoid literal string props starting with "/".
 
 ## Submission
-Button click sends a plain-language user message: button label + chosen values ("提交答案：B、C"; multi-line for forms); MultipleChoice arrives as option LABELS. action.event.context optional (touched fields auto-included); entries may be literals or {"path": "/x", "label": "名"}. Locking (submitMode "once", default): cards WITH inputs lock after submit and stay recorded; input-less cards' buttons are query buttons, always clickable; per-Button submit: true|false overrides; "multi" never locks. After an interactive card, end your turn with one short line; a plain typed reply also counts as the answer. Uploaded images/signatures arrive attached to the submission message. Users can hit 重新填写 on a locked card — the corrected submission is prefixed （修正）.
+Button click sends a plain-language user message: button label + chosen values ("提交答案：B、C"; multi-line for forms); MultipleChoice arrives as option LABELS. action.event.context optional (touched fields auto-included); entries may be literals or {"path": "/x", "label": "名"}. Locking (submitMode "once", default): cards WITH inputs lock after submit and stay recorded; input-less cards' buttons are query buttons, always clickable; per-Button submit: true|false overrides; "multi" never locks. A plain typed reply also counts as the answer. Uploads/signatures arrive attached to the submission. 重新填写 unlocks a locked card; corrections arrive prefixed （修正）.
 
 ## Updating a rendered card
-a2ui_render returns a surfaceId. Call a2ui_update {surfaceId, components?, dataModel?} to change that card IN PLACE — replace/add components by id, overwrite dataModel keys. Use for long-task progress (render a Progress card first, then update /percent as you work), corrections, and appending results — never render a duplicate card for the same content. Cards render progressively while you stream — no need to keep them small.
+a2ui_render returns a surfaceId. Call a2ui_update {surfaceId, components?, dataModel?} to change that card IN PLACE — replace/add components by id, overwrite dataModel keys. Use for long-task progress, corrections, appended results — never render a duplicate card. Cards stream progressively; don't shrink them.
 
 ## Example (quiz)
 components=[{"id":"root","component":"Column","children":["q","opts","btn"]},{"id":"q","component":"Text","variant":"h3","text":"…题目…"},{"id":"opts","component":"MultipleChoice","bind":"answer","maxAllowedSelections":1,"options":[{"label":"A…","value":"A"},{"label":"B…","value":"B"}]},{"id":"btn","component":"Button","label":"提交答案","variant":"primary","action":{"event":{"name":"submit"}}}]
 dataModel={"answer":[]}`;
 
-const RENDER_DESCRIPTION = "Render a UI card (A2UI) inline in the chat. Judge EVERY reply semantically from user intent (they never say 卡片/图表/动画): (1) UTILITY — would a card serve any of UI's three purposes better than prose? ACT 操作: the user must answer/choose/fill/adjust/rate/confirm -> form. BROWSE 浏览: the user wants to see/scan data or many items — statistics, rankings, distributions, trends, comparisons, or picking among several recommended items — movies/products/places/plans -> one Card per item in a Grid, or a Table (看/查/对比/推荐几个 IS a card ask; dated or approximate data never cancels the card — chart the best you know, label the period, caveat in prose). UNDERSTAND 理解: structure, notation or MOTION aids comprehension — math, code, flows, schedules, stepwise processes, what-if exploration, and anything that unfolds over time (algorithms, simulations, physical processes) -> step animation. FEEDBACK 反馈: before starting multi-step work (3+ tool steps), render a Progress/Steps card, a2ui_update it as steps complete, and put the final results in the card — never as a markdown table in prose. None of these (opinions, narration, short answers, translations, chat) -> prose. (2) FORM — fit each part and compose freely in one card: input->form, comparison->table, trend->chart, regional data->map, math->formula, code->code block, procedure->steps, relations->diagram, watchable process->animation, what-if->sliders+live chart. Cards PAIR with prose, never replace it: give your takeaway/analysis in 1-3 sentences of normal text and keep structured content in the card; don't duplicate data in both. Before your FIRST call in a conversation, call a2ui_catalog and follow it — never guess component names. After an interactive card, end your turn; the submission arrives as a plain-language user message.";
+const RENDER_DESCRIPTION = "Render a UI card (A2UI) inline in the chat. Judge EVERY reply from user intent (they never say 卡片/图表): would a card serve any of UI's FOUR purposes better than prose? ACT 操作: user must answer/choose/fill/adjust/confirm -> form card. BROWSE 浏览: user wants to see/scan data or items — statistics, rankings, distributions, trends, comparisons, multi-item recommendations -> chart/table/map/Grid of item cards; 看/查/对比/推荐几个 IS a card ask, and dated or approximate data never cancels the card — chart the best known, label the period, caveat in prose. UNDERSTAND 理解: structure, notation or motion aids comprehension — math, code, flows, what-if exploration, and time-unfolding processes (algorithms, simulations) -> step animation. FEEDBACK 反馈: before multi-step work (3+ tool steps), render a Progress/Steps card, a2ui_update it as steps complete, final results into the card (not markdown tables in prose). None of the four (opinions, narration, short answers, translations, chat) -> prose. Compose freely — one card can mix form/chart/table/formula parts. Cards PAIR with prose: 1-3 sentences of takeaway as normal text, structured content in the card, no duplication. Call a2ui_catalog BEFORE your first render in a conversation — never guess component names. After an interactive card, end your turn; the submission arrives as a plain-language user message.";
 
 const CATALOG_DESCRIPTION = "Returns the full component catalog and authoring rules for a2ui_render. Call ONCE before your first render in a conversation; the result stays in context — call again only if it is no longer visible.";
 
@@ -147,13 +147,18 @@ export function apply(ctx) {
 			}
 			const byId = new Map(components.filter((n) => n !== null && typeof n === "object" && n.id !== undefined).map((n) => [n.id, n]));
 			const reachable = new Set();
+			const missing = new Set();
 			const queue = ["root"];
 			while (queue.length > 0) {
 				const id = queue.pop();
 				if (reachable.has(id)) continue;
 				reachable.add(id);
 				const node = byId.get(id);
-				for (const child of Array.isArray(node?.children) ? node.children : []) queue.push(child);
+				if (node === undefined) { missing.add(id); continue; }
+				for (const child of Array.isArray(node.children) ? node.children : []) queue.push(child);
+			}
+			if (missing.size > 0) {
+				throw new Error(`a2ui_render: children reference undefined component id(s) ${[...missing].map((id) => `"${id}"`).join(", ")} — define them or fix the reference.`);
 			}
 			const orphans = [...byId.keys()].filter((id) => !reachable.has(id));
 			if (orphans.length > 0) {
@@ -175,7 +180,7 @@ export function apply(ctx) {
 
 	ctx.tools.register(defineTool({
 		name: "a2ui_update",
-		description: "Update a card you previously rendered, IN PLACE: pass the surfaceId returned by a2ui_render, plus replacement/new components (matched by id) and/or dataModel value changes. Use for progress updates during long tasks, corrections, and appending content — instead of rendering a duplicate card.",
+		description: "Update a rendered card IN PLACE by its surfaceId (from a2ui_render): components replace/add by id, dataModel overwrites keys. For progress, corrections, appended results — never render a duplicate card.",
 		parameters: {
 			surfaceId: { type: "string", required: true, description: "The surfaceId returned by the a2ui_render call to update." },
 			components: {

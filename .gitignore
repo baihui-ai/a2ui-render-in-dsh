@@ -28,3 +28,4 @@ tmp/
 
 # npm pack 产物
 *.tgz
+test/.build/

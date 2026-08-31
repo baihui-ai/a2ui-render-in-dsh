@@ -1,6 +1,6 @@
 {
   "name": "a2ui-render-in-dsh",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "A2UI interactive cards for the dsh web UI: the agent renders clickable interfaces (quizzes, forms, product cards) via @ant-design/x-card, and user interactions flow back to the agent as answers.",
   "author": "sondge <fengshangjie@lilybearing.com>",
   "license": "MIT",
@@ -52,15 +52,18 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "watch": "node scripts/build.mjs --watch",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test": "node test/run.mjs"
   },
   "devDependencies": {
     "@ant-design/x-card": "^2.9.0",
     "@deepseek-ai/dsh-tools": "^0.1.1-rc.2",
     "echarts": "^6.1.0",
     "esbuild": "^0.25.0",
+    "jsdom": "^30.0.1",
     "katex": "^0.18.4",
     "mermaid": "^11.17.0",
+    "playwright": "^1.62.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
@@ -75,6 +78,5 @@
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"
-  },
-  "dependencies": {}
+  }
 }
