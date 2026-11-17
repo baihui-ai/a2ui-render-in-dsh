@@ -25,7 +25,7 @@ globalThis.matchMedia = window.matchMedia;
 
 const { default: React, act } = await import("react");
 const { createRoot } = await import("react-dom/client");
-const { A2uiToolView, A2uiUpdateView } = await import("../src/client/index.jsx");
+const { A2uiToolView, A2uiUpdateView, A2uiInlineView, A2uiTurnTail, apply: applyClient } = await import("../src/client/index.jsx");
 
 let passed = 0;
 function assert(cond, name) {
@@ -208,10 +208,12 @@ const input = (el, value) => act(async () => {
 // ---------- 8. Calendar range ----------
 {
 	const api = mkApi();
+	const now = new Date();
+	const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 	const args = {
 		components: [
 			{ id: "root", component: "Column", children: ["cal", "btn"] },
-			{ id: "cal", component: "Calendar", label: "入住区间", bind: "stay", range: true, min: "2026-08-01", max: "2026-09-30" },
+			{ id: "cal", component: "Calendar", label: "入住区间", bind: "stay", range: true, min: `${month}-01`, max: `${month}-28` },
 			{ id: "btn", component: "Button", label: "预订", action: { event: { name: "book" } } }
 		], dataModel: { stay: [] }
 	};
@@ -483,6 +485,135 @@ const input = (el, value) => act(async () => {
 	await new Promise((resolve) => setTimeout(resolve, 60));
 	await act(async () => {});
 	assert(host.textContent.includes("提交调研") && host.querySelector(".dsha2ui-input").disabled, "reconstruction: cleared cache re-locks from transcript");
+}
+
+// ---------- 20. completed-turn slot: no tool rows need to mount ----------
+{
+	const registrations = [];
+	applyClient({
+		effect: (fn) => fn(), locale: { register() {} }, get: () => ({ api: mkApi() }),
+		slots: { inject: (_name, fn) => fn(), register: (meta, View) => registrations.push({ meta, View }) }
+	});
+	const registered = registrations.find(({ meta }) => meta.name === "conversation.chat.turnTail");
+	assert(registered?.meta.id === "a2ui-cards" && registered.meta.key === undefined, "turn tail: registered as list entry with id");
+
+	const textCard = (text) => ({ components: [{ id: "root", component: "Text", text }] });
+	const tool = (name, args, id, seq, extra = {}) => ({ ...block(name, args, id), kind: "tool-result", seq, subCalls: [], ...extra });
+	const first = tool("a2ui_render", textCard("第一张卡"), "tail_first", 3);
+	const second = tool("a2ui_render", textCard("第二张卡"), "tail_second", 8);
+	const failed = tool("a2ui_render", textCard("失败卡片"), "tail_failed", 9, { isError: true });
+	const pending = { name: "a2ui_render", callId: "tail_pending", argsRaw: JSON.stringify(textCard("未完成卡片")), subCalls: [] };
+	let tools = [first, tool("other", {}, "parent", 10, { subCalls: [second] }), failed, pending].map((root) => ({ root }));
+	const listeners = new Set();
+	const source = { getSnapshot: () => tools, subscribe: (listener) => { listeners.add(listener); return () => listeners.delete(listener); } };
+	const nodes = { turnDataSource: (turn, kind) => { assert(turn === 42 && kind === "tool-call", "turn tail: reads only its own turn tool source"); return source; } };
+	const props = { turn: { turn: 42, end: { seq: 20 } }, seq: 6, sessionId: "s-tail", useChat: (select) => select({ nodes }), api: mkApi(), t: T };
+	const view = await mount(React.createElement(A2uiTurnTail, props));
+	assert(view.host.querySelectorAll(".dsha2ui-wrap").length === 2, "turn tail: all successful cards, including nested calls, mount without tool rows");
+	assert(view.host.textContent.includes("第二张卡"), "turn tail: end boundary includes tool results after closing prose seq");
+	assert(!view.host.textContent.includes("失败卡片") && !view.host.textContent.includes("未完成卡片"), "turn tail: failed and running calls excluded");
+	assert(view.host.textContent.indexOf("第一张卡") < view.host.textContent.indexOf("第二张卡"), "turn tail: card order retained");
+	const update = tool("a2ui_update", { surfaceId: "tail_first", components: [{ id: "root", component: "Text", text: "尾部更新成功" }] }, "tail_update", 12);
+	await act(async () => { tools = [...tools, { root: update }]; for (const listener of listeners) listener(); });
+	assert(view.host.textContent.includes("尾部更新成功") && !view.host.textContent.includes("第一张卡"), "turn tail: hidden update row still applies via subscribed tail");
+	await view.unmount();
+	const replay = await mount(React.createElement(A2uiTurnTail, props));
+	assert(replay.host.textContent.includes("尾部更新成功"), "turn tail: reload replays updates");
+	assert(JSON.parse(localStorage.getItem("dsh-a2ui:updates:s-tail:tail_first")).length === 1, "turn tail: remount deduplicates updates");
+	await replay.unmount();
+	assert(listeners.size === 0, "turn tail: subscriptions cleaned up");
+}
+
+// ---------- 21. streaming -> turn tail handoff: draft, submit, refill ----------
+{
+	const args = { title: "回合交接", components: [
+		{ id: "root", component: "Column", children: ["f", "b"] },
+		{ id: "f", component: "TextField", label: "备注", bind: "memo" },
+		{ id: "b", component: "Button", label: "交接提交", action: { event: { name: "go" } } }
+	], dataModel: { memo: "" } };
+	const api = mkApi();
+	const call = { ...block("a2ui_render", args, "handoff"), kind: "tool-result", seq: 2, subCalls: [] };
+	const turn = { turn: 43, end: { seq: 5 } };
+	const toolNode = { kind: "tool-call", data: { root: call }, location: { turn } };
+	let snapshot = { nodes: { values: () => [toolNode] } };
+	const props = { callId: "handoff", block: call, sessionId: "s-handoff", api, t: T, useChat: (select) => select(snapshot) };
+	const inline = await mount(React.createElement(A2uiInlineView, props));
+	assert(inline.host.querySelector(".dsha2ui-input") !== null, "handoff: pre-completion tool row keeps preview");
+	await input(inline.host.querySelector(".dsha2ui-input"), "刚刚输入的草稿");
+	snapshot = { nodes: { values: () => [toolNode, { kind: "turn-tail", data: { turn: 43 } }] } };
+	await act(async () => inline.root.render(React.createElement(A2uiInlineView, props)));
+	assert(inline.host.querySelector(".dsha2ui-wrap") === null, "handoff: completed tool row avoids duplicate interactive card");
+	const errorView = await mount(React.createElement(A2uiInlineView, { ...props, block: { ...call, isError: true } }));
+	assert(errorView.host.textContent.includes("解析失败"), "handoff: failed tool rows retain their error presentation");
+	await errorView.unmount();
+	const source = { getSnapshot: () => tools, subscribe: () => () => {} };
+	const tools = [{ root: call }];
+	const tailProps = { ...props, turn, seq: 4, useChat: (select) => select({ nodes: { turnDataSource: () => source } }) };
+	const tail = await mount(React.createElement(A2uiTurnTail, tailProps));
+	assert(tail.host.querySelector(".dsha2ui-input").value === "刚刚输入的草稿", "handoff: draft survives immediate remount without debounce wait");
+	await click(tail.host.querySelector(".dsha2ui-btn"));
+	assert(api.prompts.length === 1 && api.prompts[0].sessionId === "s-handoff" && api.prompts[0].content[0].text.includes("刚刚输入的草稿"), "tail form: submits answer to correct session");
+	assert(tail.host.querySelector(".dsha2ui-input").disabled, "tail form: locks after successful submit");
+	await tail.unmount();
+	const restored = await mount(React.createElement(A2uiTurnTail, tailProps));
+	assert(restored.host.querySelector(".dsha2ui-input").disabled, "tail form: submission lock restores on reload");
+	await click(restored.host.querySelector(".dsha2ui-refill"));
+	assert(!restored.host.querySelector(".dsha2ui-input").disabled, "tail form: refill unlocks");
+	await restored.unmount();
+	await inline.unmount();
+	const legacy = await mount(React.createElement(A2uiInlineView, { ...props, useChat: undefined }));
+	assert(legacy.host.querySelector(".dsha2ui-wrap") !== null, "legacy: hosts without useChat retain tool-row card");
+	await legacy.unmount();
+}
+
+// ---------- 22. updates: failure/pending gates and session isolation ----------
+{
+	const args = { components: [{ id: "root", component: "Text", text: "原始值" }] };
+	const a = await renderCard(args, { callId: "shared", sessionId: "update-a" });
+	const b = await renderCard(args, { callId: "shared", sessionId: "update-b" });
+	const update = { surfaceId: "shared", components: [{ id: "root", component: "Text", text: "成功更新" }] };
+	const failed = { ...block("a2ui_update", update, "failed-update"), isError: true };
+	await mount(React.createElement(A2uiUpdateView, { callId: "failed-update", block: failed, sessionId: "update-a", t: T }));
+	assert(a.host.textContent.includes("原始值") && localStorage.getItem("dsh-a2ui:updates:update-a:shared") === null, "update: failed tool does not mutate or persist");
+	const pending = await mount(React.createElement(A2uiUpdateView, { callId: "pending-update", block: { argsRaw: JSON.stringify(update) }, sessionId: "update-a", t: T }));
+	assert(a.host.textContent.includes("原始值"), "update: complete streaming args wait for successful result");
+	await act(async () => pending.root.render(React.createElement(A2uiUpdateView, { callId: "pending-update", block: block("a2ui_update", update, "pending-update"), sessionId: "update-a", t: T })));
+	assert(a.host.textContent.includes("成功更新") && b.host.textContent.includes("原始值"), "update: success routes by session as well as call id");
+	await a.unmount(); await b.unmount(); await pending.unmount();
+}
+
+// ---------- 23. in-flight submission survives same-commit tail handoff ----------
+{
+	let finish;
+	const api = mkApi();
+	api.sessions.prompt = async (payload) => { api.prompts.push(payload); return new Promise((resolve) => { finish = resolve; }); };
+	const args = { components: [
+		{ id: "root", component: "Column", children: ["f", "b"] },
+		{ id: "f", component: "TextField", bind: "memo", label: "备注" },
+		{ id: "b", component: "Button", label: "在途提交", action: { event: { name: "go" } } }
+	], dataModel: { memo: "" } };
+	const call = { ...block("a2ui_render", args, "inflight"), kind: "tool-result", seq: 2 };
+	const tools = [{ root: call }];
+	const turn = { turn: 44, end: { seq: 6 } };
+	const toolNode = { kind: "tool-call", data: { root: call }, location: { turn } };
+	let closed = false;
+	const source = { getSnapshot: () => tools, subscribe: () => () => {} };
+	const useChat = (select) => select({ nodes: {
+		values: () => closed ? [toolNode, { kind: "turn-tail", data: { turn: 44 } }] : [toolNode],
+		turnDataSource: () => source
+	} });
+	const props = { callId: "inflight", block: call, sessionId: "s-inflight", api, t: T, useChat, turn, seq: 5 };
+	const tree = () => React.createElement(React.Fragment, null,
+		React.createElement(A2uiInlineView, props), closed ? React.createElement(A2uiTurnTail, props) : null);
+	const view = await mount(tree());
+	await input(view.host.querySelector(".dsha2ui-input"), "不能丢失");
+	await click(view.host.querySelector(".dsha2ui-btn"));
+	await act(async () => { closed = true; view.root.render(tree()); });
+	assert(view.host.querySelectorAll(".dsha2ui-wrap").length === 1 && view.host.querySelector(".dsha2ui-btn").disabled, "in-flight: handoff retains busy state with one interactive card");
+	await act(async () => { finish({ result: { ok: true, value: { accepted: true } } }); });
+	assert(view.host.querySelector(".dsha2ui-input").disabled && view.host.textContent.includes("在途提交") && view.host.querySelector(".dsha2ui-refill") !== null, "in-flight: original prompt completion locks the tail card");
+	assert(api.prompts.length === 1, "in-flight: handoff never sends a duplicate prompt");
+	await view.unmount();
 }
 
 console.log(`\nALL PASS (${passed} assertions)`);

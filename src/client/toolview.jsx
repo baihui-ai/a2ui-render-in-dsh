@@ -1,7 +1,7 @@
 // The a2ui_render toolview: renders the tool call's A2UI payload as a live
 // interactive card, and turns a Button action into an ordinary user message
 // (`[a2ui:<event>] {json}`) sent back through session.prompt.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Box as XCardBox, Card as XCardSurface } from "@ant-design/x-card";
 import { CATALOG, CardMirrorContext } from "./components.jsx";
 import { VIZ_CATALOG } from "./components-viz.jsx";
@@ -24,6 +24,12 @@ function createMirror() {
 	};
 	const store = {
 		data: {},
+		sendState: { kind: "idle" },
+		sendSnapshot: () => store.sendState,
+		setSendState(next) {
+			store.sendState = next;
+			notify();
+		},
 		seeded: false,
 		displays: new Map(), // normalized path -> { name?, text }
 		get(path) {
@@ -43,6 +49,7 @@ function createMirror() {
 		},
 		setDisplay(path, entry) {
 			store.displays.set(path.replace(/^\//, ""), entry);
+			store.draftHook?.();
 		},
 		seed(dataModel) {
 			if (store.seeded || dataModel === null || typeof dataModel !== "object") return;
@@ -81,6 +88,7 @@ function createMirror() {
 			notify();
 		},
 		lock() {
+			if (locked) return;
 			locked = true;
 			notify();
 		},
@@ -91,6 +99,31 @@ function createMirror() {
 		uploads: []
 	};
 	return store;
+}
+
+// Keep the live mirror during a tool-row -> turn-tail handoff. In-flight
+// submissions and uploads belong to the card, not to its current mount point.
+// Release after effects settle, so a same-commit replacement can claim it.
+const mountedMirrors = new Map();
+function useCardMirror(key) {
+	const mirror = useMemo(() => {
+		if (!mountedMirrors.has(key)) {
+			const value = createMirror();
+			value.mounts = 0;
+			mountedMirrors.set(key, value);
+		}
+		return mountedMirrors.get(key);
+	}, [key]);
+	useEffect(() => {
+		mirror.mounts++;
+		return () => {
+			mirror.mounts--;
+			queueMicrotask(() => {
+				if (mirror.mounts === 0 && mountedMirrors.get(key) === mirror) mountedMirrors.delete(key);
+			});
+		};
+	}, [key, mirror]);
+	return mirror;
 }
 
 /** localStorage record of a card's submission; null when absent/unreadable. */
@@ -289,14 +322,14 @@ function readUpdates(key) {
 }
 
 /** The a2ui_update tool row: applies the update to the target card and records it. */
-export function A2uiUpdateView({ callId, block, sessionId, t }) {
+export function A2uiUpdateView({ callId, block, sessionId, t, quiet = false }) {
 	const settled = "kind" in block;
 	const argsRaw = (settled ? block.call?.argsRaw : block.argsRaw) ?? "";
 	const appliedRef = useRef(false);
 	let update = null;
 	try { update = JSON.parse(argsRaw); } catch { /* streaming */ }
 	useEffect(() => {
-		if (update === null || typeof update.surfaceId !== "string" || appliedRef.current) return;
+		if (!settled || block.isError === true || update === null || typeof update.surfaceId !== "string" || appliedRef.current) return;
 		appliedRef.current = true;
 		const storeKey = `dsh-a2ui:updates:${sessionId}:${update.surfaceId}`;
 		// Dedupe by this update's own callId: a remounted update view must not
@@ -308,9 +341,10 @@ export function A2uiUpdateView({ callId, block, sessionId, t }) {
 			localStorage.setItem(storeKey, JSON.stringify(list));
 			pruneStorage();
 		} catch { /* storage unavailable */ }
-		SURFACES.get(update.surfaceId)?.(update);
+		SURFACES.get(JSON.stringify([sessionId, update.surfaceId]))?.(update);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [update !== null]);
+	}, [settled, block.isError, update !== null]);
+	if (quiet) return null;
 	if (update === null) return <div className="dsha2ui-skeleton"><span className="dsha2ui-pulse">↺</span></div>;
 	const parts = [];
 	if (Array.isArray(update.components) && update.components.length > 0) parts.push(`${update.components.length} 个组件`);
@@ -331,8 +365,8 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 		(node) => node !== null && typeof node === "object" && ["MultipleChoice", "CheckBox", "TextField", "Select", "Rate", "Slider", "Upload", "Calendar", "RankList", "Signature", "EditableTable", "Wizard"].includes(node.component)
 	);
 
-	const mirrorRef = useRef(null);
-	if (mirrorRef.current === null) mirrorRef.current = createMirror();
+	const mirror = useCardMirror(storageKey);
+	const mirrorRef = useRef(mirror);
 	mirrorRef.current.animStorageKey = `dsh-a2ui:animplayed:${sessionId}:${callId}`;
 	const draftKey = `dsh-a2ui:draft:${sessionId}:${callId}`;
 
@@ -356,22 +390,17 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 	}
 	if (args !== null) mirrorRef.current.seed(args.dataModel);
 
-	// Auto-save a draft (debounced) on every input write, so a page reload
-	// before submitting keeps what was already filled in.
-	const draftTimer = useRef(null);
+	// Save immediately: a turn can close and move this card to the tail in
+	// the same frame as an input, before a debounce timer would have fired.
 	useEffect(() => {
 		if (!hasInputs) return undefined;
 		mirrorRef.current.draftHook = () => {
 			pingTodo();
-			clearTimeout(draftTimer.current);
-			draftTimer.current = setTimeout(() => {
-				try {
-					localStorage.setItem(draftKey, JSON.stringify({ at: Date.now(), data: mirrorRef.current.data, displays: [...mirrorRef.current.displays] }));
-				} catch { /* storage unavailable */ }
-			}, 400);
+			try {
+				localStorage.setItem(draftKey, JSON.stringify({ at: Date.now(), data: mirrorRef.current.data, displays: [...mirrorRef.current.displays] }));
+			} catch { /* storage unavailable */ }
 		};
 		return () => {
-			clearTimeout(draftTimer.current);
 			mirrorRef.current.draftHook = undefined;
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -390,12 +419,13 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 			}
 			setExtraCommands((prev) => [...prev, ...updateCommands(callId, update)]);
 		};
-		SURFACES.set(callId, applyUpdate);
+		const key = JSON.stringify([sessionId, callId]);
+		SURFACES.set(key, applyUpdate);
 		// Delete only our own registration — StrictMode double-mounts would
 		// otherwise remove the newer mount's entry.
-		return () => { if (SURFACES.get(callId) === applyUpdate) SURFACES.delete(callId); };
+		return () => { if (SURFACES.get(key) === applyUpdate) SURFACES.delete(key); };
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [callId]);
+	}, [callId, sessionId]);
 	const commands = useMemo(() => {
 		if (args === null) return [];
 		const queue = [
@@ -410,7 +440,8 @@ export function A2uiToolView({ callId, block, sessionId, api, t }) {
 		return [...queue, ...extraCommands];
 	}, [args, surfaceId, extraCommands]);
 
-	const [sendState, setSendState] = useState({ kind: "idle" });
+	const sendState = useSyncExternalStore(mirror.subscribe, mirror.sendSnapshot);
+	const setSendState = mirror.setSendState;
 
 	// Surface a restored record in the footer once args have parsed.
 	const ready = args !== null;
