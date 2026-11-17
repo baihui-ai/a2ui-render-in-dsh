@@ -1,5 +1,6 @@
 // dsh-a2ui client half: registers the a2ui_render toolview and its locale.
 import { A2uiToolView, A2uiUpdateView } from "./toolview.jsx";
+import { A2uiInlineView, A2uiTurnTail } from "./turn-tail.jsx";
 import { injectStyles } from "./styles.js";
 
 injectStyles();
@@ -66,12 +67,12 @@ export const name = "a2ui-client";
 export const inject = ["slots", "locale", "connection"];
 
 // Exposed for harness/tests; dsh itself only consumes apply/inject.
-export { A2uiToolView, A2uiUpdateView };
+export { A2uiToolView, A2uiUpdateView, A2uiInlineView, A2uiTurnTail };
 
 export function apply(ctx) {
 	ctx.effect(() => ctx.locale.register(NS, { zh, en }), "a2ui: dictionaries");
 	const api = ctx.get("connection").api;
-	const View = (props) => <A2uiToolView {...props} api={api} />;
+	const View = (props) => <A2uiInlineView {...props} api={api} />;
 	ctx.slots.inject("tool.call.toolview", () => ctx.slots.register({
 		name: "tool.call.toolview",
 		key: "a2ui_render",
@@ -82,4 +83,10 @@ export function apply(ctx) {
 		key: "a2ui_update",
 		locale: NS
 	}, A2uiUpdateView));
+	ctx.slots.inject("conversation.chat.turnTail", () => ctx.slots.register({
+		name: "conversation.chat.turnTail",
+		id: "a2ui-cards",
+		order: 30,
+		locale: NS
+	}, (props) => <A2uiTurnTail {...props} api={api} />));
 }
