@@ -29,3 +29,6 @@ tmp/
 # npm pack 产物
 *.tgz
 test/.build/
+
+# 本地开发规格
+/mai-specs/
